@@ -1,4 +1,4 @@
-// CYCombatGameplayEffects.h - 단순화된 쿨다운
+// CYCombatGameplayEffects.h - PostInitProperties 선언
 
 #pragma once
 
@@ -15,22 +15,28 @@ public:
 	UGE_MovementModifier();
 };
 
-// 완전 정지 트랩
+// ✅ 완전 정지 트랩 - PostInitProperties 추가
 UCLASS()
 class CATCHMEIFYOUCAN_API UGE_ImmobilizeTrap : public UGameplayEffect
 {
 	GENERATED_BODY()
 public:
 	UGE_ImmobilizeTrap();
+	
+	// ✅ PostInitProperties에서 안전한 Modifier 설정
+	virtual void PostInitProperties() override;
 };
 
-// 슬로우 트랩
+// ✅ 슬로우 트랩 - PostInitProperties 추가
 UCLASS()
 class CATCHMEIFYOUCAN_API UGE_SlowTrap : public UGameplayEffect
 {
 	GENERATED_BODY()
 public:
 	UGE_SlowTrap();
+	
+	// ✅ PostInitProperties에서 안전한 Modifier 설정
+	virtual void PostInitProperties() override;
 };
 
 // 무기 데미지

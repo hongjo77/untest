@@ -1,4 +1,4 @@
-// CYCombatGameplayEffects.cpp - 트랩 효과 제대로 작동하도록 수정
+// CYCombatGameplayEffects.cpp - 안전한 효과 적용
 
 #include "CYCombatGameplayEffects.h"
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
@@ -58,44 +58,72 @@ UGE_TrapPlaceCooldown::UGE_TrapPlaceCooldown()
     InheritableGameplayEffectTags.Added = GrantedTags;
 }
 
-// ✅ 제대로 작동하는 슬로우 트랩
+// ✅ 간소화된 슬로우 트랩 - 블루프린트 호환성 고려
 UGE_SlowTrap::UGE_SlowTrap()
 {
     DurationPolicy = EGameplayEffectDurationType::HasDuration;
     DurationMagnitude = FGameplayEffectModifierMagnitude(5.0f);
     
-    // ✅ 제대로 된 ModifierInfo 설정
+    // ✅ 기본 설정만 하고 세부 Modifier는 블루프린트에서 설정하도록 유도
+    // 또는 PostInitProperties에서 설정
+}
+
+void UGE_SlowTrap::PostInitProperties()
+{
+    Super::PostInitProperties();
+    
+    // ✅ PostInitProperties에서 안전하게 Modifier 설정
+    if (!HasAnyFlags(RF_ClassDefaultObject))
+    {
+        return; // CDO가 아닌 경우만 설정
+    }
+    
+    // ✅ Modifier 재설정
+    Modifiers.Empty();
+    
     FGameplayModifierInfo MoveSpeedModifier;
     MoveSpeedModifier.Attribute = UCYCombatAttributeSet::GetMoveSpeedAttribute();
     MoveSpeedModifier.ModifierOp = EGameplayModOp::Override;
     
-    // ✅ Scalable Float 사용
     FScalableFloat SlowSpeed;
     SlowSpeed.Value = 50.0f; // 느린 속도
     MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(SlowSpeed);
     
     Modifiers.Add(MoveSpeedModifier);
     
-    UE_LOG(LogTemp, Warning, TEXT("🧊 SlowTrap Effect: Set to 50 speed for 5 seconds"));
+    UE_LOG(LogTemp, Warning, TEXT("🧊 SlowTrap Effect: PostInit - Set to 50 speed for 5 seconds"));
 }
 
 UGE_ImmobilizeTrap::UGE_ImmobilizeTrap()
 {
     DurationPolicy = EGameplayEffectDurationType::HasDuration;
     DurationMagnitude = FGameplayEffectModifierMagnitude(3.0f);
+}
+
+void UGE_ImmobilizeTrap::PostInitProperties()
+{
+    Super::PostInitProperties();
+    
+    // ✅ PostInitProperties에서 안전하게 Modifier 설정
+    if (!HasAnyFlags(RF_ClassDefaultObject))
+    {
+        return; // CDO가 아닌 경우만 설정
+    }
+    
+    // ✅ Modifier 재설정
+    Modifiers.Empty();
     
     FGameplayModifierInfo MoveSpeedModifier;
     MoveSpeedModifier.Attribute = UCYCombatAttributeSet::GetMoveSpeedAttribute();
     MoveSpeedModifier.ModifierOp = EGameplayModOp::Override;
     
-    // ✅ Scalable Float 사용
     FScalableFloat FreezeSpeed;
     FreezeSpeed.Value = 0.0f; // 완전 정지
     MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FreezeSpeed);
     
     Modifiers.Add(MoveSpeedModifier);
     
-    UE_LOG(LogTemp, Warning, TEXT("❄️ FreezeTrap Effect: Set to 0 speed for 3 seconds"));
+    UE_LOG(LogTemp, Warning, TEXT("❄️ FreezeTrap Effect: PostInit - Set to 0 speed for 3 seconds"));
 }
 
 UGE_WeaponDamage::UGE_WeaponDamage()

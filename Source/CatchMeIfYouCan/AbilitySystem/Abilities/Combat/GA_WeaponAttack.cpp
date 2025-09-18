@@ -17,16 +17,16 @@ UGA_WeaponAttack::UGA_WeaponAttack()
     AssetTags.AddTag(CYGameplayTags::Ability_Combat_WeaponAttack);
     SetAssetTags(AssetTags);
     
-    // 활성화 중 소유 태그 - 중복 실행 방지
+    // ✅ 핵심 수정: 활성화 중 소유 태그로 중복 실행 방지
     FGameplayTagContainer OwnedTags;
     OwnedTags.AddTag(CYGameplayTags::State_Combat_Attacking);
     ActivationOwnedTags = OwnedTags;
     
-    // 차단 태그 - 쿨다운 중, 공격 중, 스턴 중 차단
+    // ✅ 더 엄격한 차단 태그
     FGameplayTagContainer BlockedTags;
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
-    BlockedTags.AddTag(CYGameplayTags::State_Combat_Attacking);
+    BlockedTags.AddTag(CYGameplayTags::State_Combat_Attacking); // 공격 중일 때 추가 공격 차단
     BlockedTags.AddTag(CYGameplayTags::Cooldown_Combat_WeaponAttack);
     ActivationBlockedTags = BlockedTags;
 }
@@ -35,18 +35,21 @@ bool UGA_WeaponAttack::CanActivateAbility(const FGameplayAbilitySpecHandle Handl
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
-	// 쿨다운 먼저 체크 - 빠른 리턴
-	if (IsOnCooldown(ActorInfo))
+	// ✅ 중복 실행 방지: 이미 공격 중이면 차단
+	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
-		return false; // 로그 제거
+		if (ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::State_Combat_Attacking))
+		{
+			return false; // 이미 공격 중
+		}
+		
+		if (ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack))
+		{
+			return false; // 쿨다운 중
+		}
 	}
 
-	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
-	{
-		return false; // 로그 제거
-	}
-
-	return true;
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -60,7 +63,7 @@ void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 
-	// 즉시 쿨다운 적용 (중복 실행 차단)
+	// ✅ 즉시 쿨다운 적용 (중복 실행 차단)
 	ApplyWeaponCooldown(Handle, ActorInfo, ActivationInfo);
 
 	// Cost 커밋
@@ -70,7 +73,7 @@ void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 
-	// 공격 수행 (로그는 여기서만)
+	// ✅ 공격은 한 번만 수행, 로그도 한 번만
 	bool bAttackSuccess = PerformAttack();
     
 	if (bAttackSuccess)
@@ -101,16 +104,6 @@ bool UGA_WeaponAttack::PerformAttack()
     }
     
     return false;
-}
-
-bool UGA_WeaponAttack::IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const
-{
-    if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid())
-    {
-        return false;
-    }
-
-    return ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack);
 }
 
 void UGA_WeaponAttack::ProcessHitTarget(const FHitResult& HitResult)

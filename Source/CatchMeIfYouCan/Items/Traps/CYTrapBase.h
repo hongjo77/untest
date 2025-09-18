@@ -1,4 +1,4 @@
-// CYTrapBase.h - 기존 설계 유지, 불필요한 복잡성만 제거
+// CYTrapBase.h - 강화된 백업 로직 헤더
 
 #pragma once
 
@@ -114,9 +114,16 @@ protected:
     void OnPickupSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-    // 트랩 효과 적용 (단순화됨)
+    // ✅ 트랩 효과 적용 (강화된 백업 로직 포함)
     UFUNCTION(BlueprintCallable, Category = "Trap")
     void ApplyTrapEffects(ACYPlayerCharacter* Target);
+
+    // ✅ 새로운 백업 함수들
+    UFUNCTION(BlueprintCallable, Category = "Trap")
+    void VerifyEffectApplication(ACYPlayerCharacter* Target, UAbilitySystemComponent* TargetASC);
+
+    UFUNCTION(BlueprintCallable, Category = "Trap")
+    void ApplyDirectMovementControl(ACYPlayerCharacter* Target);
 
     FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
 
