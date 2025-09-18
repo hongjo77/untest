@@ -1,30 +1,33 @@
-﻿// GA_PlaceTrap.cpp - 트랩별 특성 반영 개선
-#include "GA_PlaceTrap.h"
+﻿#include "AbilitySystem/Abilities/Combat/GA_PlaceTrap.h"
 
+#include "AbilitySystemComponent.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
-#include "Items/CYTrapFactory.h"
-#include "Items/CYItemBase.h"
-#include "Engine/World.h"
 #include "AbilitySystem/Effects/CYCombatGameplayEffects.h"
-#include "Camera/CameraComponent.h"
+#include "Character/CYPlayerCharacter.h"
+#include "Items/Traps/CYTrapBase.h"
+#include "Items/Traps/CYSlowTrap.h"
+#include "Items/Traps/CYFreezeTrap.h"
+#include "Items/Traps/CYDamageTrap.h"
 #include "Components/Items/CYInventoryComponent.h"
 #include "Components/Items/CYWeaponComponent.h"
-#include "Items/Traps/CYTrapBase.h"
+#include "Engine/World.h"
+#include "Engine/Engine.h"
 
 UGA_PlaceTrap::UGA_PlaceTrap()
 {
-	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
+    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
+    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
 
-	// ✅ 팀프로젝트 방식으로 태그 설정
-	FGameplayTagContainer AssetTags;
-	AssetTags.AddTag(CYGameplayTags::Ability_Combat_PlaceTrap);
-	SetAssetTags(AssetTags);
+    // 태그 설정
+    FGameplayTagContainer AssetTags;
+    AssetTags.AddTag(CYGameplayTags::Ability_Combat_PlaceTrap);
+    SetAssetTags(AssetTags);
     
-	FGameplayTagContainer BlockedTags;
-	BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
-	BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
-	ActivationBlockedTags = BlockedTags;
+    // 블로킹 태그 설정
+    FGameplayTagContainer BlockedTags;
+    BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
+    BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
+    ActivationBlockedTags = BlockedTags;
 }
 
 void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -32,203 +35,79 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
-    UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap::ActivateAbility called"));
-    
     if (!HasAuthorityOrPredictionKey(ActorInfo, &ActivationInfo))
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ GA_PlaceTrap: No authority or prediction key"));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
         return;
     }
 
-    AActor* OwnerActor = GetAvatarActorFromActorInfo();
-    if (!OwnerActor)
+    // 쿨다운 체크
+    FGameplayTagContainer CooldownTags;
+    CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_TrapPlace);
+    if (GetAbilitySystemComponentFromActorInfo()->HasAnyMatchingGameplayTags(CooldownTags))
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ GA_PlaceTrap: OwnerActor is null"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        UE_LOG(LogTemp, Warning, TEXT("⏰ Trap placement on cooldown"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
         return;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap: OwnerActor found: %s"), *OwnerActor->GetName());
-
-    // ✅ SourceObject에서 특정 아이템 가져오기 (우선순위 1)
-    ACYItemBase* SourceItem = GetSourceItemFromAbility(Handle, ActorInfo);
-    
-    // ✅ 백업: 인벤토리에서 트랩 아이템 찾기 (우선순위 2)
-    if (!SourceItem)
+    // 인벤토리에서 트랩 아이템 찾기
+    ACYItemBase* TrapItem = FindTrapItemInInventory();
+    if (!TrapItem)
     {
-        SourceItem = FindValidTrapItemInInventory(OwnerActor);
-        UE_LOG(LogTemp, Warning, TEXT("🎯 GA_PlaceTrap: Using fallback inventory search"));
-    }
-    
-    if (!SourceItem)
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ GA_PlaceTrap: No valid trap item found"));
+        UE_LOG(LogTemp, Error, TEXT("❌ No trap item found in inventory"));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
-
-    // ✅ 아이템 타입별 트랩 생성 정보 로깅
-    LogTrapCreationInfo(SourceItem);
 
     // 트랩 설치 위치 계산
-    FVector SpawnLocation = CalculateSpawnLocation(OwnerActor);
-    FRotator SpawnRotation = OwnerActor->GetActorRotation();
+    FVector SpawnLocation = CalculateSpawnLocation();
     
-    UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap: Spawn location: %s"), *SpawnLocation.ToString());
-
-    // ✅ 개선된 팩토리를 통한 트랩 생성
-    ACYTrapBase* NewTrap = CreateTrapFromSourceItem(SourceItem, SpawnLocation, SpawnRotation, OwnerActor);
-
+    // 트랩 생성 및 설치
+    ACYTrapBase* NewTrap = CreateTrapFromItem(TrapItem, SpawnLocation);
+    
     if (NewTrap)
     {
-        UE_LOG(LogTemp, Warning, TEXT("✅ Trap successfully created: %s"), 
-               *NewTrap->GetClass()->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("✅ Trap placed: %s at %s"), 
+               *NewTrap->ItemName.ToString(), *SpawnLocation.ToString());
         
-        // ✅ 트랩 설치 후 해당 특정 아이템 소모 처리
-        ConsumeSpecificItemFromInventory(OwnerActor, SourceItem);
+        // 아이템 소모
+        ConsumeItemFromInventory(TrapItem);
         
-        // ✅ 트랩별 성공 메시지 표시
-        ShowTrapPlacementSuccess(NewTrap);
+        // 성공 메시지
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, 
+                FString::Printf(TEXT("🎯 %s Placed!"), *NewTrap->ItemName.ToString()));
+        }
+        
+        // 쿨다운 적용
+        FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_TrapPlaceCooldown::StaticClass(), 1);
+        if (CooldownSpec.IsValid())
+        {
+            ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ Failed to create trap from item: %s"), 
-               *SourceItem->ItemName.ToString());
+        UE_LOG(LogTemp, Error, TEXT("❌ Failed to create trap"));
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap: Ability completed"));
     EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
 
-ACYItemBase* UGA_PlaceTrap::GetSourceItemFromAbility(const FGameplayAbilitySpecHandle Handle, 
-    const FGameplayAbilityActorInfo* ActorInfo)
+ACYItemBase* UGA_PlaceTrap::FindTrapItemInInventory()
 {
-    // AbilitySpec의 SourceObject 확인
-    FGameplayAbilitySpec* AbilitySpec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle);
-    if (AbilitySpec && AbilitySpec->SourceObject.IsValid())
-    {
-        ACYItemBase* SourceItem = Cast<ACYItemBase>(AbilitySpec->SourceObject.Get());
-        UE_LOG(LogTemp, Warning, TEXT("🎯 GA_PlaceTrap: Using SourceObject item: %s"), 
-               SourceItem ? *SourceItem->ItemName.ToString() : TEXT("Invalid"));
-        return SourceItem;
-    }
-    
-    return nullptr;
-}
-
-void UGA_PlaceTrap::LogTrapCreationInfo(ACYItemBase* SourceItem)
-{
-    if (!SourceItem) return;
-    
-    FString ItemName = SourceItem->ItemName.ToString();
-    ETrapType InferredType = UCYTrapFactory::InferTrapTypeFromItem(SourceItem);
-    FString TrapTypeName = UCYTrapFactory::GetTrapTypeName(InferredType);
-    
-    UE_LOG(LogTemp, Warning, TEXT("🎯 Creating trap:"));
-    UE_LOG(LogTemp, Warning, TEXT("   📦 Source Item: %s"), *ItemName);
-    UE_LOG(LogTemp, Warning, TEXT("   🎭 Inferred Type: %s"), *TrapTypeName);
-    UE_LOG(LogTemp, Warning, TEXT("   📊 Item Count: %d"), SourceItem->ItemCount);
-}
-
-ACYTrapBase* UGA_PlaceTrap::CreateTrapFromSourceItem(ACYItemBase* SourceItem, 
-    const FVector& SpawnLocation, const FRotator& SpawnRotation, AActor* OwnerActor)
-{
-    if (!SourceItem || !GetWorld()) return nullptr;
-    
-    // ✅ 팩토리를 통한 트랩 생성 (타입별 특성 자동 적용)
-    ACYTrapBase* NewTrap = UCYTrapFactory::CreateTrapFromItem(
-        GetWorld(),
-        SourceItem,
-        SpawnLocation,
-        SpawnRotation,
-        OwnerActor,
-        Cast<APawn>(OwnerActor)
-    );
-    
-    if (NewTrap)
-    {
-        // ✅ 추가적인 트랩 설정 (필요시)
-        ConfigureNewTrap(NewTrap, SourceItem);
-    }
-    
-    return NewTrap;
-}
-
-void UGA_PlaceTrap::ConfigureNewTrap(ACYTrapBase* NewTrap, ACYItemBase* SourceItem)
-{
-    if (!NewTrap || !SourceItem) return;
-    
-    // ✅ 트랩별 특별 설정 (예: 아이템 개수에 따른 효과 증폭 등)
-    ETrapType TrapType = NewTrap->TrapType;
-    
-    switch (TrapType)
-    {
-        case ETrapType::Freeze:
-            UE_LOG(LogTemp, Log, TEXT("🧊 Configured FreezeTrap with enhanced ice effects"));
-            break;
-            
-        case ETrapType::Slow:
-            UE_LOG(LogTemp, Log, TEXT("🌀 Configured SlowTrap with enhanced slowing effects"));
-            break;
-            
-        case ETrapType::Damage:
-            UE_LOG(LogTemp, Log, TEXT("⚔️ Configured DamageTrap with enhanced damage effects"));
-            break;
-            
-        default:
-            UE_LOG(LogTemp, Log, TEXT("🎯 Configured basic trap"));
-            break;
-    }
-}
-
-void UGA_PlaceTrap::ShowTrapPlacementSuccess(ACYTrapBase* NewTrap)
-{
-    if (!NewTrap || !GEngine) return;
-    
-    ETrapType TrapType = NewTrap->TrapType;
-    FString TrapTypeName = UCYTrapFactory::GetTrapTypeName(TrapType);
-    
-    // ✅ 트랩별 성공 메시지 색상
-    FColor MessageColor = FColor::White;
-    FString MessageIcon = TEXT("🎯");
-    
-    switch (TrapType)
-    {
-        case ETrapType::Freeze:
-            MessageColor = FColor::Cyan;
-            MessageIcon = TEXT("❄️");
-            break;
-            
-        case ETrapType::Slow:
-            MessageColor = FColor::Blue;
-            MessageIcon = TEXT("🌀");
-            break;
-            
-        case ETrapType::Damage:
-            MessageColor = FColor::Red;
-            MessageIcon = TEXT("⚔️");
-            break;
-    }
-    
-    FString SuccessMessage = FString::Printf(TEXT("%s %s Trap Placed!"), 
-                                           *MessageIcon, *TrapTypeName);
-    
-    GEngine->AddOnScreenDebugMessage(-1, 3.0f, MessageColor, SuccessMessage);
-    UE_LOG(LogTemp, Warning, TEXT("✅ %s"), *SuccessMessage);
-}
-
-ACYItemBase* UGA_PlaceTrap::FindValidTrapItemInInventory(AActor* OwnerActor)
-{
+    AActor* OwnerActor = GetAvatarActorFromActorInfo();
     if (!OwnerActor) return nullptr;
 
     UCYInventoryComponent* InventoryComp = OwnerActor->FindComponentByClass<UCYInventoryComponent>();
     if (!InventoryComp) return nullptr;
 
-    // 아이템 슬롯에서 트랩 아이템 찾기
+    // 아이템 슬롯에서 트랩 찾기
     for (ACYItemBase* Item : InventoryComp->ItemSlots)
     {
-        if (Item && Item->ItemTag.MatchesTag(FGameplayTag::RequestGameplayTag("Item.Trap")) && Item->ItemCount > 0)
+        if (Item && Item->ItemType == EItemType::Trap && Item->ItemCount > 0)
         {
             return Item;
         }
@@ -237,70 +116,110 @@ ACYItemBase* UGA_PlaceTrap::FindValidTrapItemInInventory(AActor* OwnerActor)
     return nullptr;
 }
 
-void UGA_PlaceTrap::ConsumeSpecificItemFromInventory(AActor* OwnerActor, ACYItemBase* SourceItem)
+ACYTrapBase* UGA_PlaceTrap::CreateTrapFromItem(ACYItemBase* TrapItem, const FVector& Location)
 {
-    if (!OwnerActor || !SourceItem) return;
-
-    UCYInventoryComponent* InventoryComp = OwnerActor->FindComponentByClass<UCYInventoryComponent>();
-    if (!InventoryComp) return;
-
-    // ✅ 해당 특정 아이템만 소모
-    SourceItem->ItemCount--;
+    if (!TrapItem || !GetWorld()) return nullptr;
     
-    if (SourceItem->ItemCount <= 0)
+    // 트랩 타입에 따라 적절한 클래스 선택
+    TSubclassOf<ACYTrapBase> TrapClass = nullptr;
+    
+    FString ItemName = TrapItem->ItemName.ToString().ToLower();
+    if (ItemName.Contains(TEXT("slow")))
     {
-        // 아이템이 모두 소모되면 슬롯에서 제거
-        for (int32 i = 0; i < InventoryComp->ItemSlots.Num(); ++i)
-        {
-            if (InventoryComp->ItemSlots[i] == SourceItem)
-            {
-                InventoryComp->ItemSlots[i] = nullptr;
-                
-                // 이벤트 발생
-                int32 UnifiedIndex = i; // ItemSlot은 0부터 시작
-                InventoryComp->OnInventoryChanged.Broadcast(UnifiedIndex, nullptr);
-                
-                SourceItem->Destroy();
-                break;
-            }
-        }
+        TrapClass = ACYSlowTrap::StaticClass();
+    }
+    else if (ItemName.Contains(TEXT("freeze")))
+    {
+        TrapClass = ACYFreezeTrap::StaticClass();
+    }
+    else if (ItemName.Contains(TEXT("damage")))
+    {
+        TrapClass = ACYDamageTrap::StaticClass();
     }
     else
     {
-        // 수량만 감소한 경우 이벤트 발생
-        for (int32 i = 0; i < InventoryComp->ItemSlots.Num(); ++i)
-        {
-            if (InventoryComp->ItemSlots[i] == SourceItem)
-            {
-                int32 UnifiedIndex = i;
-                InventoryComp->OnInventoryChanged.Broadcast(UnifiedIndex, SourceItem);
-                break;
-            }
-        }
+        // 기본값: 슬로우 트랩
+        TrapClass = ACYSlowTrap::StaticClass();
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("🔧 Consumed specific trap item: %s (Remaining: %d)"), 
-           *SourceItem->ItemName.ToString(), SourceItem->ItemCount);
+    if (!TrapClass) return nullptr;
+    
+    // 트랩 스폰
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = GetAvatarActorFromActorInfo();
+    SpawnParams.Instigator = Cast<APawn>(GetAvatarActorFromActorInfo());
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    ACYTrapBase* NewTrap = GetWorld()->SpawnActor<ACYTrapBase>(TrapClass, Location, FRotator::ZeroRotator, SpawnParams);
+    
+    if (NewTrap)
+    {
+        // 플레이어가 설치한 트랩으로 변환
+        NewTrap->PlaceTrap(Location, Cast<ACYPlayerCharacter>(GetAvatarActorFromActorInfo()));
+    }
+    
+    return NewTrap;
 }
 
-FVector UGA_PlaceTrap::CalculateSpawnLocation(AActor* OwnerActor)
+FVector UGA_PlaceTrap::CalculateSpawnLocation()
 {
-    if (!OwnerActor)
-    {
-        return FVector::ZeroVector;
-    }
+    AActor* OwnerActor = GetAvatarActorFromActorInfo();
+    if (!OwnerActor) return FVector::ZeroVector;
 
-    FHitResult HitResult;
     UCYWeaponComponent* WeaponComp = OwnerActor->FindComponentByClass<UCYWeaponComponent>();
-    
-    // 라인 트레이스로 정확한 위치 계산
-    if (WeaponComp && WeaponComp->PerformLineTrace(HitResult, 300.0f))
+    if (WeaponComp)
     {
-        return HitResult.Location;
+        FHitResult HitResult;
+        if (WeaponComp->PerformLineTrace(HitResult, 300.0f))
+        {
+            return HitResult.Location;
+        }
     }
 
     // 백업: 캐릭터 앞쪽에 배치
     FVector ForwardLocation = OwnerActor->GetActorLocation() + OwnerActor->GetActorForwardVector() * 200.0f;
     ForwardLocation.Z = OwnerActor->GetActorLocation().Z;
     return ForwardLocation;
+}
+
+void UGA_PlaceTrap::ConsumeItemFromInventory(ACYItemBase* Item)
+{
+    if (!Item) return;
+    
+    AActor* OwnerActor = GetAvatarActorFromActorInfo();
+    UCYInventoryComponent* InventoryComp = OwnerActor->FindComponentByClass<UCYInventoryComponent>();
+    if (!InventoryComp) return;
+
+    // 아이템 수량 감소
+    Item->ItemCount--;
+    
+    if (Item->ItemCount <= 0)
+    {
+        // 아이템이 모두 소모되면 슬롯에서 제거
+        for (int32 i = 0; i < InventoryComp->ItemSlots.Num(); ++i)
+        {
+            if (InventoryComp->ItemSlots[i] == Item)
+            {
+                InventoryComp->ItemSlots[i] = nullptr;
+                InventoryComp->OnInventoryChanged.Broadcast(i + 4, nullptr); // 4~9번 키
+                Item->Destroy();
+                break;
+            }
+        }
+    }
+    else
+    {
+        // 수량만 감소한 경우
+        for (int32 i = 0; i < InventoryComp->ItemSlots.Num(); ++i)
+        {
+            if (InventoryComp->ItemSlots[i] == Item)
+            {
+                InventoryComp->OnInventoryChanged.Broadcast(i + 4, Item); // 4~9번 키
+                break;
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("🔧 Consumed trap item: %s (Remaining: %d)"), 
+           *Item->ItemName.ToString(), Item->ItemCount);
 }

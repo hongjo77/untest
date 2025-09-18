@@ -1,4 +1,4 @@
-﻿// CYInventoryComponent.h - 중복 방지 플래그 추가
+﻿// CYInventoryComponent.h - 핵심 로직만 남긴 인벤토리 컴포넌트
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,93 +7,83 @@
 
 class ACYItemBase;
 class ACYWeaponBase;
-class UAbilitySystemComponent;
-class UCYAbilitySystemComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInventoryChanged, int32, SlotIndex, ACYItemBase*, Item);
 
 UCLASS(BlueprintType, Blueprintable, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CATCHMEIFYOUCAN_API UCYInventoryComponent : public UActorComponent
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	UCYInventoryComponent();
+    UCYInventoryComponent();
 
-	// 슬롯 설정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	int32 WeaponSlotCount = 3;
+    // 슬롯 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+    int32 WeaponSlotCount = 3;  // 1~3번 키
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	int32 ItemSlotCount = 10;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+    int32 ItemSlotCount = 6;    // 4~9번 키
 
-	// 슬롯 배열
-	UPROPERTY(ReplicatedUsing = OnRep_WeaponSlots, BlueprintReadOnly, Category = "Inventory")
-	TArray<ACYItemBase*> WeaponSlots;
+    // 슬롯 배열 (네트워크 동기화)
+    UPROPERTY(ReplicatedUsing = OnRep_WeaponSlots, BlueprintReadOnly, Category = "Inventory")
+    TArray<ACYItemBase*> WeaponSlots;
 
-	UPROPERTY(ReplicatedUsing = OnRep_ItemSlots, BlueprintReadOnly, Category = "Inventory")
-	TArray<ACYItemBase*> ItemSlots;
+    UPROPERTY(ReplicatedUsing = OnRep_ItemSlots, BlueprintReadOnly, Category = "Inventory")
+    TArray<ACYItemBase*> ItemSlots;
 
-	// 이벤트
-	UPROPERTY(BlueprintAssignable, Category = "Events")
-	FOnInventoryChanged OnInventoryChanged;
+    // 이벤트
+    UPROPERTY(BlueprintAssignable, Category = "Events")
+    FOnInventoryChanged OnInventoryChanged;
 
-	// 공개 인터페이스
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool AddItem(ACYItemBase* Item, int32 SlotIndex = -1);
+    // 공개 인터페이스
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    bool AddItem(ACYItemBase* Item);
 
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool RemoveItem(int32 SlotIndex);
+    // UFUNCTION(BlueprintCallable, Category = "Inventory")
+    // bool RemoveItem(int32 SlotIndex);
 
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	ACYItemBase* GetItem(int32 SlotIndex) const;
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    ACYItemBase* GetItem(int32 SlotIndex) const;
 
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool UseItem(int32 SlotIndex);
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    bool UseItem(int32 SlotIndex);
 
-	UFUNCTION(Server, Reliable, Category = "Inventory")
-	void ServerUseItem(int32 SlotIndex);
+    UFUNCTION(Server, Reliable, Category = "Inventory")
+    void ServerUseItem(int32 SlotIndex);
+
+    // 디버그 함수
+    UFUNCTION(BlueprintCallable, Category = "Debug")
+    void ShowInventoryDebug();
 
 protected:
-	virtual void BeginPlay() override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    virtual void BeginPlay() override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	// ✅ 중복 사용 방지 플래그
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Inventory")
-	bool bIsProcessingUse = false;
+    // 네트워크 동기화
+    UFUNCTION()
+    void OnRep_WeaponSlots();
 
-	// 리플리케이션 응답
-	UFUNCTION()
-	void OnRep_WeaponSlots();
+    UFUNCTION()
+    void OnRep_ItemSlots();
 
-	UFUNCTION()
-	void OnRep_ItemSlots();
+    // 내부 로직
+    bool AddWeapon(ACYItemBase* Weapon);
+    bool AddItemWithStacking(ACYItemBase* Item);
+    
+    int32 FindEmptyWeaponSlot() const;
+    int32 FindEmptyItemSlot() const;
+    int32 FindStackableItemSlot(ACYItemBase* Item) const;
+    bool TryStackWithExistingItem(ACYItemBase* Item);
 
-	// 핵심 로직
-	bool AddWeapon(ACYItemBase* Weapon);
-	bool AddItemWithStacking(ACYItemBase* Item);
+    // 슬롯 인덱스 변환
+    bool IsWeaponSlot(int32 SlotIndex) const { return SlotIndex >= 1 && SlotIndex <= 3; }
+    bool IsItemSlot(int32 SlotIndex) const { return SlotIndex >= 4 && SlotIndex <= 9; }
+    int32 WeaponSlotToIndex(int32 SlotIndex) const { return SlotIndex - 1; } // 1->0, 2->1, 3->2
+    int32 ItemSlotToIndex(int32 SlotIndex) const { return SlotIndex - 4; }   // 4->0, 5->1, 6->2...
 
-	// 유틸리티 함수
-	int32 FindEmptyWeaponSlot() const;
-	int32 FindEmptyItemSlot() const;
-	int32 FindStackableItemSlot(ACYItemBase* Item) const;
-	bool TryStackWithExistingItem(ACYItemBase* Item);
-	void AutoEquipFirstWeapon(ACYWeaponBase* Weapon);
-
-	// 아이템 사용 관련
-	bool EquipWeaponFromSlot(ACYItemBase* Item);
-	bool ActivateItemAbility(ACYItemBase* Item, int32 SlotIndex);
-	
-	// ✅ 트랩 아이템 전용 사용 로직 - 직접 실행
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool UseTrapItemDirect(ACYItemBase* Item, int32 LocalIndex);
-	
-	void ProcessItemConsumption(ACYItemBase* Item, int32 SlotIndex);
-
-	// 제거 관련
-	bool RemoveWeaponFromSlot(int32 WeaponIndex);
-	bool RemoveItemFromSlot(int32 ItemIndex);
-
-	// ASC 접근
-	UAbilitySystemComponent* GetOwnerASC() const;
+private:
+    // 중복 실행 방지
+    UPROPERTY(Replicated)
+    bool bIsProcessingUse = false;
 };

@@ -1,60 +1,62 @@
+// CYWeaponBase.cpp - 핵심 로직만 남긴 무기 클래스 구현
 #include "Items/CYWeaponBase.h"
-
-#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "Character/CYPlayerCharacter.h"
+#include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
 
 ACYWeaponBase::ACYWeaponBase()
 {
 	ItemName = FText::FromString("Base Weapon");
-	ItemDescription = FText::FromString("A basic weapon");
+	ItemType = EItemType::Weapon;
+	MaxStackCount = 1; // 무기는 스택 불가
     
-	// ✅ 팀프로젝트 방식으로 태그 설정
-	ItemTag = CYGameplayTags::Item_Weapon;
-    
-	UE_LOG(LogTemp, Warning, TEXT("CYWeaponBase: ItemTag set to %s"), *ItemTag.ToString());
+	OwningCharacter = nullptr;
 }
 
-void ACYWeaponBase::OnPickup(ACYPlayerCharacter* Character)
+bool ACYWeaponBase::UseItem(ACYPlayerCharacter* Character)
 {
-    UE_LOG(LogTemp, Warning, TEXT("CYWeaponBase::OnPickup: %s"), *ItemName.ToString());
+	if (!Character) return false;
     
-    // 부모 클래스의 OnPickup 호출 (어빌리티 부여)
-    Super::OnPickup(Character);
+	// 무기 사용 = 장착
+	Equip(Character);
+	return true;
 }
 
 void ACYWeaponBase::Equip(ACYPlayerCharacter* Character)
 {
-    if (!Character) return;
+	if (!Character || !HasAuthority()) return;
 
-    OwningCharacter = Character;
+	OwningCharacter = Character;
     
-    // 무기를 캐릭터에 부착
-    if (Character->GetMesh())
-    {
-        AttachToComponent(
-            Character->GetMesh(),
-            FAttachmentTransformRules::SnapToTargetIncludingScale,
-            TEXT("hand_r")  // 오른손 소켓
-        );
-    }
+	// 무기를 캐릭터에 부착
+	if (Character->GetMesh())
+	{
+		AttachToComponent(
+			Character->GetMesh(),
+			FAttachmentTransformRules::SnapToTargetIncludingScale,
+			TEXT("hand_r")  // 오른손 소켓
+		);
+	}
 
-    // 충돌 비활성화
-    ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// 충돌 비활성화 (장착된 무기는 월드와 충돌하지 않음)
+	ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    
+	// 보이게 하기
+	SetActorHiddenInGame(false);
 
-    UE_LOG(LogTemp, Warning, TEXT("Weapon equipped: %s"), *ItemName.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon equipped: %s"), *ItemName.ToString());
 }
 
 void ACYWeaponBase::Unequip()
 {
-    if (!OwningCharacter) return;
+	if (!OwningCharacter || !HasAuthority()) return;
 
-    // 부착 해제
-    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	// 부착 해제
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
     
-    OwningCharacter = nullptr;
+	OwningCharacter = nullptr;
 
-    UE_LOG(LogTemp, Warning, TEXT("Weapon unequipped: %s"), *ItemName.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon unequipped: %s"), *ItemName.ToString());
 }

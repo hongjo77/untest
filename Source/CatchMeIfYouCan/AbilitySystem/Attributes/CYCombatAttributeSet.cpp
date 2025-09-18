@@ -1,4 +1,4 @@
-﻿// CYCombatAttributeSet.cpp - testun 방식으로 단순화
+﻿// CYCombatAttributeSet.cpp - Character 변수 충돌 해결
 
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Net/UnrealNetwork.h"
@@ -52,7 +52,6 @@ void UCYCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
     }
     else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
     {
-        // ✅ testun 방식: 단순하고 직접적인 처리
         HandleMoveSpeedChange();
     }
 }
@@ -77,17 +76,16 @@ void UCYCombatAttributeSet::HandleMoveSpeedChange()
     
     UE_LOG(LogTemp, Warning, TEXT("🏃 HandleMoveSpeedChange: %f"), NewMoveSpeed);
     
-    // ✅ testun 방식: 단순한 Character 찾기
-    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
+    if (ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwningActor()))
     {
-        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+        if (UCharacterMovementComponent* MovementComp = OwnerCharacter->GetCharacterMovement())
         {
             ApplyMovementRestrictions(MovementComp, NewMoveSpeed);
             
             // 서버에서 변경된 경우 네트워크 업데이트
-            if (Character->HasAuthority())
+            if (OwnerCharacter->HasAuthority())
             {
-                Character->ForceNetUpdate();
+                OwnerCharacter->ForceNetUpdate();
             }
         }
     }
@@ -96,17 +94,17 @@ void UCYCombatAttributeSet::HandleMoveSpeedChange()
         // PlayerState를 통한 접근 시도
         if (APlayerState* PlayerState = Cast<APlayerState>(GetOwningActor()))
         {
-            if (APawn* Pawn = PlayerState->GetPawn())
+            if (APawn* OwnerPawn = PlayerState->GetPawn())
             {
-                if (ACharacter* Character = Cast<ACharacter>(Pawn))
+                if (ACharacter* PawnCharacter = Cast<ACharacter>(OwnerPawn))
                 {
-                    if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+                    if (UCharacterMovementComponent* MovementComp = PawnCharacter->GetCharacterMovement())
                     {
                         ApplyMovementRestrictions(MovementComp, NewMoveSpeed);
                         
-                        if (Character->HasAuthority())
+                        if (PawnCharacter->HasAuthority())
                         {
-                            Character->ForceNetUpdate();
+                            PawnCharacter->ForceNetUpdate();
                         }
                     }
                 }
@@ -123,7 +121,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
     
     if (Speed <= 0.0f)
     {
-        // 완전 정지 - testun 방식
+        // 완전 정지
         MovementComp->StopMovementImmediately();
         MovementComp->MaxAcceleration = 0.0f;
         MovementComp->BrakingDecelerationWalking = 10000.0f;
@@ -134,7 +132,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
     }
     else if (Speed < 200.0f)
     {
-        // 느림 상태 - testun 방식
+        // 느림 상태
         MovementComp->MaxAcceleration = 500.0f;
         MovementComp->BrakingDecelerationWalking = 1000.0f;
         MovementComp->JumpZVelocity = 0.0f;
@@ -143,7 +141,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
     }
     else
     {
-        // 정상 복구 - testun 방식
+        // 정상 복구
         MovementComp->MaxAcceleration = 2048.0f;
         MovementComp->BrakingDecelerationWalking = 2000.0f;
         MovementComp->GroundFriction = 8.0f;
@@ -152,11 +150,10 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
         UE_LOG(LogTemp, Warning, TEXT("🏃 MOVEMENT RESTORED: %s"), *GetOwningActor()->GetName());
     }
     
-    // ✅ testun 방식: 간단한 업데이트
     MovementComp->UpdateComponentVelocity();
 }
 
-// OnRep 함수들 - testun 방식으로 단순화
+// OnRep 함수들
 void UCYCombatAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, Health, OldHealth);
@@ -174,7 +171,6 @@ void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMov
     UE_LOG(LogTemp, Warning, TEXT("🏃 [CLIENT] OnRep_MoveSpeed: %f -> %f"), 
            OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
     
-    // ✅ 클라이언트에서도 동일한 제한 적용 (testun 방식)
     HandleMoveSpeedChange();
 }
 

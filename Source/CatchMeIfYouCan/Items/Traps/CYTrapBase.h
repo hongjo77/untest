@@ -1,15 +1,20 @@
-// CYTrapBase.h - 강화된 백업 로직 헤더
-
+// CYTrapBase.h - 핵심 로직만 남긴 트랩 기본 클래스
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Items/CYItemBase.h"
-#include "Items/CYTrapData.h"
 #include "CYTrapBase.generated.h"
 
-class ACYPlayerCharacter;
-class UAbilitySystemComponent;
 class UGameplayEffect;
+class ACYPlayerCharacter;
+
+UENUM(BlueprintType)
+enum class ETrapType : uint8
+{
+    Slow        UMETA(DisplayName = "Slow Trap"),
+    Freeze      UMETA(DisplayName = "Freeze Trap"),
+    Damage      UMETA(DisplayName = "Damage Trap")
+};
 
 UENUM(BlueprintType)
 enum class ETrapState : uint8
@@ -18,7 +23,7 @@ enum class ETrapState : uint8
     PlayerPlaced    UMETA(DisplayName = "Player Placed (Active)")
 };
 
-UCLASS(Abstract, BlueprintType)
+UCLASS(Abstract)
 class CATCHMEIFYOUCAN_API ACYTrapBase : public ACYItemBase
 {
     GENERATED_BODY()
@@ -26,106 +31,62 @@ class CATCHMEIFYOUCAN_API ACYTrapBase : public ACYItemBase
 public:
     ACYTrapBase();
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trap State", Replicated)
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap")
+    ETrapType TrapType = ETrapType::Slow;
+
+    UPROPERTY(ReplicatedUsing = OnRep_TrapState, BlueprintReadOnly, Category = "Trap")
     ETrapState TrapState = ETrapState::MapPlaced;
 
-    UPROPERTY(BlueprintReadOnly, Category = "Trap State", Replicated)
+    UPROPERTY(ReplicatedUsing = OnRep_IsArmed, BlueprintReadOnly, Category = "Trap")
     bool bIsArmed = false;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Data", Replicated)
-    FTrapData TrapData;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap", Replicated)
-    ETrapType TrapType;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Settings")
+    // 트랩 설정
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap")
     float TriggerRadius = 100.0f;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Settings")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap")
     float ArmingDelay = 2.0f;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Settings")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap")
     float TrapLifetime = 60.0f;
 
+    // 트랩 효과들
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap")
+    TArray<TSubclassOf<UGameplayEffect>> TrapEffects;
+
+    // 트랩 전용 함수들
+    virtual bool UseItem(ACYPlayerCharacter* Character) override;
+
     UFUNCTION(BlueprintCallable, Category = "Trap")
-    void ConvertToPlayerPlacedTrap(AActor* PlacingPlayer);
-
-    // 이벤트 함수들 (하위 클래스에서 오버라이드)
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
-    void OnTrapSpawned();
-    virtual void OnTrapSpawned_Implementation();
-
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
-    void OnTrapArmed();
-    virtual void OnTrapArmed_Implementation();
-
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
-    void OnTrapTriggered(ACYPlayerCharacter* Target);
-    virtual void OnTrapTriggered_Implementation(ACYPlayerCharacter* Target);
-
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
-    void OnTrapDestroyed();
-    virtual void OnTrapDestroyed_Implementation();
-
-    // 시각적/오디오 설정 (하위 클래스에서 오버라이드)
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Visuals")
-    void SetupTrapVisuals();
-    virtual void SetupTrapVisuals_Implementation();
-
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Audio")
-    void PlayTrapSound();
-    virtual void PlayTrapSound_Implementation();
-
-    // 커스텀 효과 (하위 클래스에서 오버라이드)
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Effects")
-    void ApplyCustomEffects(ACYPlayerCharacter* Target);
-    virtual void ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target);
-
-    // 멀티캐스트 함수들
-    UFUNCTION(NetMulticast, Reliable, Category = "Trap Events")
-    void MulticastOnTrapTriggered(ACYPlayerCharacter* Target);
-
-    UFUNCTION(NetMulticast, Reliable, Category = "Trap Visuals")
-    void MulticastUpdateTrapVisuals();
+    void PlaceTrap(const FVector& Location, ACYPlayerCharacter* Placer);
 
 protected:
     virtual void BeginPlay() override;
-    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-    // 핵심 트랩 로직
-    void InitializeTrapVisuals();
-    void SetupTrapForCurrentState();
-    void SetupTrapTimers();
+    // 네트워크 동기화
+    UFUNCTION()
+    void OnRep_TrapState();
+
+    UFUNCTION()
+    void OnRep_IsArmed();
+
+    // 트랩 로직
+    UFUNCTION()
     void ArmTrap();
 
-    // 오버랩 이벤트들
     UFUNCTION()
-    void OnTriggerSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+    void OnTrapTriggered(ACYPlayerCharacter* Target);
+
+    // 충돌 이벤트 (오버라이드)
+    UFUNCTION()
+    void OnTrapSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
         bool bFromSweep, const FHitResult& SweepResult);
 
-    UFUNCTION()
-    void OnPickupSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-        bool bFromSweep, const FHitResult& SweepResult);
-
-    UFUNCTION()
-    void OnPickupSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
-    // ✅ 트랩 효과 적용 (강화된 백업 로직 포함)
-    UFUNCTION(BlueprintCallable, Category = "Trap")
-    void ApplyTrapEffects(ACYPlayerCharacter* Target);
-
-    // ✅ 새로운 백업 함수들
-    UFUNCTION(BlueprintCallable, Category = "Trap")
-    void VerifyEffectApplication(ACYPlayerCharacter* Target, UAbilitySystemComponent* TargetASC);
-
-    UFUNCTION(BlueprintCallable, Category = "Trap")
-    void ApplyDirectMovementControl(ACYPlayerCharacter* Target);
-
-    FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
+    // 트랩별 커스텀 효과 (하위 클래스에서 구현)
+    UFUNCTION(BlueprintImplementableEvent, Category = "Trap")
+    void ApplyTrapEffect(ACYPlayerCharacter* Target);
 
 private:
     FTimerHandle ArmingTimer;

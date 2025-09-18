@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/Abilities/CYGameplayAbility.h"
-#include "Items/CYTrapData.h"
 #include "GA_PlaceTrap.generated.h"
 
 class ACYTrapBase;
@@ -22,28 +21,9 @@ protected:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
-	ACYItemBase* GetSourceItemFromAbility(const FGameplayAbilitySpecHandle Handle, 
-		const FGameplayAbilityActorInfo* ActorInfo);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	void LogTrapCreationInfo(ACYItemBase* SourceItem);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	ACYTrapBase* CreateTrapFromSourceItem(ACYItemBase* SourceItem, 
-		const FVector& SpawnLocation, const FRotator& SpawnRotation, AActor* OwnerActor);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	void ConfigureNewTrap(ACYTrapBase* NewTrap, ACYItemBase* SourceItem);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	void ShowTrapPlacementSuccess(ACYTrapBase* NewTrap);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	FVector CalculateSpawnLocation(AActor* OwnerActor);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	ACYItemBase* FindValidTrapItemInInventory(AActor* OwnerActor);
-
-	UFUNCTION(BlueprintCallable, Category = "Trap")
-	void ConsumeSpecificItemFromInventory(AActor* OwnerActor, ACYItemBase* SourceItem);
+private:
+	ACYItemBase* FindTrapItemInInventory();
+	ACYTrapBase* CreateTrapFromItem(ACYItemBase* TrapItem, const FVector& Location);
+	FVector CalculateSpawnLocation();
+	void ConsumeItemFromInventory(ACYItemBase* Item);
 };

@@ -15,9 +15,9 @@ UCLASS()
 class CATCHMEIFYOUCAN_API ACYPlayerController : public APlayerController
 {
 	GENERATED_BODY()
-    
+	
 public:
-    
+	
 	ACYPlayerController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	UFUNCTION(BlueprintCallable, Category = "CY|PlayerController")

@@ -18,11 +18,11 @@ class CATCHMEIFYOUCAN_API UCYWeaponComponent : public UActorComponent
 public:
 	UCYWeaponComponent();
 
-	// 현재 장착된 무기
+	// 현재 장착된 무기 (네트워크 동기화)
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapon")
 	ACYWeaponBase* CurrentWeapon;
 
-	// 무기 장착 소켓 이름
+	// 무기 장착 소켓
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	FName WeaponSocketName = TEXT("hand_r");
 
@@ -30,7 +30,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnWeaponChanged OnWeaponChanged;
 
-	// 무기 관리
+	// 핵심 기능
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(ACYWeaponBase* Weapon);
 
@@ -40,17 +40,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool PerformAttack();
 
-	// 라인 트레이스 (무기 공격용)
+	// 라인 트레이스 (공격 범위 확인)
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool PerformLineTrace(FHitResult& OutHit, float Range = 1000.0f);
-
-	// ✅ 클라이언트에서 직접 호출 가능한 인벤토리 표시
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void DisplayInventoryStatus();
-
-	// 클라이언트 RPC로 인벤토리 상태 표시 (백업용)
-	UFUNCTION(Client, Reliable, Category = "Weapon")
-	void ClientDisplayInventoryStatus();
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -58,12 +50,8 @@ protected:
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
 
-	// 핵심 로직 분리
-	bool ExecuteWeaponAttack();
-
 	// 헬퍼 함수들
-	UCYAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
+	UCYAbilitySystemComponent* GetOwnerASC() const;
 	USkeletalMeshComponent* GetOwnerMesh() const;
 	void AttachWeaponToOwner(ACYWeaponBase* Weapon);
-	void DisableWeaponInteraction(ACYWeaponBase* Weapon);
 };

@@ -1,19 +1,14 @@
-﻿// CYWeaponComponent.cpp - testun 방식으로 단순화
-
-#include "Components/Items/CYWeaponComponent.h"
+﻿#include "Components/Items/CYWeaponComponent.h"
 #include "Items/CYWeaponBase.h"
-#include "AbilitySystemComponent.h"
-#include "AbilitySystemInterface.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Engine/World.h"
-#include "Engine/Engine.h"
-#include "GameFramework/Character.h"
-#include "Camera/CameraComponent.h"
-#include "Components/SphereComponent.h"
-#include "CYInventoryComponent.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
+#include "AbilitySystemInterface.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/SphereComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Engine/World.h"
 
 UCYWeaponComponent::UCYWeaponComponent()
 {
@@ -31,6 +26,7 @@ bool UCYWeaponComponent::EquipWeapon(ACYWeaponBase* Weapon)
 {
     if (!Weapon || !GetOwner()->HasAuthority()) return false;
 
+    // 기존 무기 해제
     if (CurrentWeapon)
     {
         UnequipWeapon();
@@ -38,9 +34,20 @@ bool UCYWeaponComponent::EquipWeapon(ACYWeaponBase* Weapon)
 
     CurrentWeapon = Weapon;
     AttachWeaponToOwner(Weapon);
-    DisableWeaponInteraction(Weapon);
+    
+    // 충돌 비활성화
+    if (Weapon->ItemMesh)
+    {
+        Weapon->ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+    if (Weapon->InteractionSphere)
+    {
+        Weapon->InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
     
     OnWeaponChanged.Broadcast(nullptr, CurrentWeapon);
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon equipped: %s"), *Weapon->ItemName.ToString());
     return true;
 }
 
@@ -53,114 +60,41 @@ bool UCYWeaponComponent::UnequipWeapon()
     CurrentWeapon = nullptr;
 
     OnWeaponChanged.Broadcast(OldWeapon, nullptr);
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon unequipped: %s"), *OldWeapon->ItemName.ToString());
     return true;
 }
 
 bool UCYWeaponComponent::PerformAttack()
 {
-    if (!GetOwner()->HasAuthority()) 
+    if (!GetOwner()->HasAuthority()) return false;
+    
+    if (!CurrentWeapon)
     {
+        UE_LOG(LogTemp, Warning, TEXT("❌ No weapon equipped"));
         return false;
     }
 
-    if (CurrentWeapon) 
+    UCYAbilitySystemComponent* ASC = GetOwnerASC();
+    if (!ASC)
     {
-        return ExecuteWeaponAttack();
-    }
-    
-    return false;
-}
-
-bool UCYWeaponComponent::ExecuteWeaponAttack()
-{
-    if (!CurrentWeapon) 
-    {
+        UE_LOG(LogTemp, Error, TEXT("❌ No AbilitySystemComponent found"));
         return false;
     }
 
-    UCYAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent();
-    if (!ASC) 
-    {
-        return false;
-    }
-
-    // ✅ testun 방식: 단순한 어빌리티 활성화
-    return ASC->TryActivateAbilityByTag(CYGameplayTags::Ability_Combat_WeaponAttack);
-}
-
-void UCYWeaponComponent::DisplayInventoryStatus()
-{
-    if (!GEngine) return;
-
-    UCYInventoryComponent* InventoryComp = GetOwner()->FindComponentByClass<UCYInventoryComponent>();
-    if (!InventoryComp)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("❌ No InventoryComponent found"));
-        return;
-    }
-
-    GEngine->ClearOnScreenDebugMessages();
-    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, TEXT("=== 📦 INVENTORY STATUS ==="));
+    // 무기 공격 어빌리티 실행
+    bool bSuccess = ASC->TryActivateAbilityByTag(CYGameplayTags::Ability_Combat_WeaponAttack);
     
-    // 무기 슬롯 (1~3번 키)
-    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, TEXT("🗡️ WEAPONS (Keys 1-3):"));
-    for (int32 i = 0; i < InventoryComp->WeaponSlots.Num(); ++i)
+    if (bSuccess)
     {
-        FString WeaponInfo;
-        if (InventoryComp->WeaponSlots[i])
-        {
-            WeaponInfo = FString::Printf(TEXT("  [%d] %s x%d"), 
-                i + 1, 
-                *InventoryComp->WeaponSlots[i]->ItemName.ToString(), 
-                InventoryComp->WeaponSlots[i]->ItemCount
-            );
-            
-            ACYWeaponBase* SlotWeapon = Cast<ACYWeaponBase>(InventoryComp->WeaponSlots[i]);
-            if (CurrentWeapon && SlotWeapon && CurrentWeapon == SlotWeapon)
-            {
-                WeaponInfo += TEXT(" ⭐ EQUIPPED");
-                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, WeaponInfo);
-            }
-            else
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::White, WeaponInfo);
-            }
-        }
-        else
-        {
-            WeaponInfo = FString::Printf(TEXT("  [%d] Empty"), i + 1);
-            GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Silver, WeaponInfo);
-        }
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack activated"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack failed (cooldown or no ability)"));
     }
     
-    // 아이템 슬롯 (4~9번 키)
-    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, TEXT("🎒 ITEMS (Keys 4-9):"));
-    int32 MaxDisplayItems = FMath::Min(6, InventoryComp->ItemSlots.Num());
-    for (int32 i = 0; i < MaxDisplayItems; ++i)
-    {
-        FString ItemInfo;
-        if (InventoryComp->ItemSlots[i])
-        {
-            ItemInfo = FString::Printf(TEXT("  [%d] %s x%d"), 
-                i + 4, 
-                *InventoryComp->ItemSlots[i]->ItemName.ToString(), 
-                InventoryComp->ItemSlots[i]->ItemCount
-            );
-            GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::White, ItemInfo);
-        }
-        else
-        {
-            ItemInfo = FString::Printf(TEXT("  [%d] Empty"), i + 4);
-            GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Silver, ItemInfo);
-        }
-    }
-    
-    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, TEXT("=================="));
-}
-
-void UCYWeaponComponent::ClientDisplayInventoryStatus_Implementation()
-{
-    DisplayInventoryStatus();
+    return bSuccess;
 }
 
 bool UCYWeaponComponent::PerformLineTrace(FHitResult& OutHit, float Range)
@@ -174,22 +108,21 @@ bool UCYWeaponComponent::PerformLineTrace(FHitResult& OutHit, float Range)
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(GetOwner());
 
-    return GetWorld()->LineTraceSingleByChannel(
+    bool bHit = GetWorld()->LineTraceSingleByChannel(
         OutHit, Start, End, ECC_Visibility, Params
     );
-}
-
-void UCYWeaponComponent::OnRep_CurrentWeapon()
-{
-    OnWeaponChanged.Broadcast(nullptr, CurrentWeapon);
     
-    if (CurrentWeapon)
+    if (bHit)
     {
-        AttachWeaponToOwner(CurrentWeapon);
+        UE_LOG(LogTemp, Log, TEXT("🎯 Line trace hit: %s at distance %.1f"), 
+               *OutHit.GetActor()->GetName(), 
+               FVector::Dist(Start, OutHit.Location));
     }
+    
+    return bHit;
 }
 
-UCYAbilitySystemComponent* UCYWeaponComponent::GetOwnerAbilitySystemComponent() const
+UCYAbilitySystemComponent* UCYWeaponComponent::GetOwnerASC() const
 {
     if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(GetOwner()))
     {
@@ -219,19 +152,22 @@ void UCYWeaponComponent::AttachWeaponToOwner(ACYWeaponBase* Weapon)
             FAttachmentTransformRules::SnapToTargetIncludingScale,
             WeaponSocketName
         );
+        
+        UE_LOG(LogTemp, Log, TEXT("🔗 Weapon attached to socket: %s"), *WeaponSocketName.ToString());
     }
 }
 
-void UCYWeaponComponent::DisableWeaponInteraction(ACYWeaponBase* Weapon)
+void UCYWeaponComponent::OnRep_CurrentWeapon()
 {
-    if (!Weapon) return;
-
-    if (Weapon->ItemMesh)
+    OnWeaponChanged.Broadcast(nullptr, CurrentWeapon);
+    
+    if (CurrentWeapon)
     {
-        Weapon->ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        AttachWeaponToOwner(CurrentWeapon);
+        UE_LOG(LogTemp, Log, TEXT("🔄 Client weapon replicated: %s"), *CurrentWeapon->ItemName.ToString());
     }
-    if (Weapon->InteractionSphere)
+    else
     {
-        Weapon->InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        UE_LOG(LogTemp, Log, TEXT("🔄 Client weapon unequipped"));
     }
 }

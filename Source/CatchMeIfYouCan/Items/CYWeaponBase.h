@@ -1,3 +1,4 @@
+// CYWeaponBase.h - 핵심 로직만 남긴 무기 클래스
 #pragma once
 
 #include "CoreMinimal.h"
@@ -12,7 +13,7 @@ class CATCHMEIFYOUCAN_API ACYWeaponBase : public ACYItemBase
 public:
 	ACYWeaponBase();
 
-	// Weapon Stats
+	// 무기 스탯
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	float BaseDamage = 50.0f;
 
@@ -20,17 +21,19 @@ public:
 	float AttackRange = 1000.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	float AttackCooldown = 1.0f;
+	float AttackCooldown = 2.0f;
 
-	// Override pickup behavior
-	virtual void OnPickup(ACYPlayerCharacter* Character) override;
+	// 무기 전용 함수들
+	virtual bool UseItem(ACYPlayerCharacter* Character) override;
 
-	// Equip/Unequip
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void Equip(ACYPlayerCharacter* Character);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void Unequip();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool IsEquipped() const { return OwningCharacter != nullptr; }
 
 protected:
 	UPROPERTY()

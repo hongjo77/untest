@@ -1,17 +1,15 @@
-﻿#include "CYItemInteractionComponent.h"
-#include "CYInventoryComponent.h"
-#include "Character/CYPlayerCharacter.h"
+﻿#include "Components/Items/CYItemInteractionComponent.h"
 #include "Items/CYItemBase.h"
-#include "Items/CYWeaponBase.h"
-#include "Engine/World.h"
 #include "Items/Traps/CYTrapBase.h"
+#include "Components/Items/CYInventoryComponent.h"
+#include "Character/CYPlayerCharacter.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "Net/UnrealNetwork.h"
 
 UCYItemInteractionComponent::UCYItemInteractionComponent()
 {
-    // ✅ Tick 비활성화
     PrimaryComponentTick.bCanEverTick = false;
     SetIsReplicatedByDefault(true);
 }
@@ -20,7 +18,7 @@ void UCYItemInteractionComponent::BeginPlay()
 {
     Super::BeginPlay();
     
-    // ✅ 서버에서만 타이머 시작
+    // 서버에서만 타이머 시작
     if (GetOwner()->HasAuthority())
     {
         GetWorld()->GetTimerManager().SetTimer(
@@ -30,8 +28,6 @@ void UCYItemInteractionComponent::BeginPlay()
             CheckInterval,
             true // 반복
         );
-        
-        UE_LOG(LogTemp, Warning, TEXT("✅ ItemInteractionComponent timer started (%.2fs interval)"), CheckInterval);
     }
 }
 
@@ -43,94 +39,38 @@ void UCYItemInteractionComponent::GetLifetimeReplicatedProps(TArray<FLifetimePro
 
 void UCYItemInteractionComponent::InteractWithNearbyItem()
 {
-    UE_LOG(LogTemp, Warning, TEXT("🔧 InteractWithNearbyItem called! NearbyItem: %s"), 
-           NearbyItem ? *NearbyItem->GetName() : TEXT("NULL"));
+    if (!NearbyItem) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("❌ No nearby item to interact with"));
+        return;
+    }
     
-    if (NearbyItem)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("🔧 Calling ServerPickupItem for: %s"), *NearbyItem->GetName());
-        ServerPickupItem(NearbyItem);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ No nearby item to interact with!"));
-        
-        // ✅ 수동으로 근처 아이템 찾기 (디버깅용)
-        TArray<AActor*> FoundActors;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACYItemBase::StaticClass(), FoundActors);
-        
-        FVector PlayerLocation = GetOwner()->GetActorLocation();
-        for (AActor* Actor : FoundActors)
-        {
-            if (ACYItemBase* Item = Cast<ACYItemBase>(Actor))
-            {
-                float Distance = FVector::Dist(PlayerLocation, Item->GetActorLocation());
-                if (Distance < InteractionRange && !Item->bIsPickedUp)
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("🔧 Manual found nearby item: %s at distance %f"), 
-                           *Item->GetName(), Distance);
-                    
-                    // ✅ 강제로 픽업 시도
-                    if (ACYTrapBase* Trap = Cast<ACYTrapBase>(Item))
-                    {
-                        if (Trap->TrapState == ETrapState::MapPlaced)
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("🔧 Force picking up trap: %s"), *Item->GetName());
-                            ServerPickupItem(Item);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("🔧 Force picking up item: %s"), *Item->GetName());
-                        ServerPickupItem(Item);
-                        return;
-                    }
-                }
-            }
-        }
-    }
+    UE_LOG(LogTemp, Warning, TEXT("🔧 Interacting with: %s"), *NearbyItem->GetName());
+    ServerPickupItem(NearbyItem);
 }
 
 void UCYItemInteractionComponent::ServerPickupItem_Implementation(ACYItemBase* Item)
 {
-    UE_LOG(LogTemp, Warning, TEXT("🔧 ServerPickupItem called for: %s"), 
-           Item ? *Item->GetName() : TEXT("NULL"));
+    if (!Item || !GetOwner()->HasAuthority() || Item->bIsPickedUp) return;
     
-    if (!Item || !GetOwner()->HasAuthority() || Item->bIsPickedUp) 
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ ServerPickupItem failed - Item: %s, HasAuthority: %s, bIsPickedUp: %s"), 
-               Item ? TEXT("Valid") : TEXT("NULL"),
-               GetOwner()->HasAuthority() ? TEXT("true") : TEXT("false"),
-               Item ? (Item->bIsPickedUp ? TEXT("true") : TEXT("false")) : TEXT("N/A"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("🔧 ServerPickupItem: %s with tag %s"), 
-           *Item->ItemName.ToString(), *Item->ItemTag.ToString());
-
-    UCYInventoryComponent* InventoryComp = GetInventoryComponent();
-    if (!InventoryComp) 
+    UCYInventoryComponent* InventoryComp = GetOwner()->FindComponentByClass<UCYInventoryComponent>();
+    if (!InventoryComp)
     {
         UE_LOG(LogTemp, Error, TEXT("❌ No InventoryComponent found"));
         return;
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("🔧 InventoryComponent found, calling AddItem..."));
     
-    // ✅ 단순하게 인벤토리에만 추가 (AddItem에서 자동으로 무기/아이템 구분)
+    // 인벤토리에 추가
     bool bAddedToInventory = InventoryComp->AddItem(Item);
-    UE_LOG(LogTemp, Warning, TEXT("🔧 AddItem result: %s"), 
-           bAddedToInventory ? TEXT("SUCCESS") : TEXT("FAILED"));
-    
     if (bAddedToInventory)
     {
-        UE_LOG(LogTemp, Warning, TEXT("✅ Item successfully added to inventory, calling OnPickup..."));
+        // 아이템 픽업 처리
         Item->OnPickup(Cast<ACYPlayerCharacter>(GetOwner()));
+        UE_LOG(LogTemp, Warning, TEXT("✅ Item picked up: %s"), *Item->ItemName.ToString());
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ Failed to add item to inventory!"));
+        UE_LOG(LogTemp, Error, TEXT("❌ Failed to add item to inventory"));
     }
 }
 
@@ -138,78 +78,36 @@ void UCYItemInteractionComponent::CheckForNearbyItems()
 {
     if (!GetOwner()) return;
     
-    FVector StartLocation = GetOwner()->GetActorLocation();
-    
-    // ✅ ObjectType을 WorldDynamic으로 설정
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
-    
-    TArray<AActor*> IgnoreActors;
-    IgnoreActors.Add(GetOwner());
-    
-    TArray<AActor*> OutActors;
-    bool bHit = UKismetSystemLibrary::SphereOverlapActors(
-        GetWorld(),
-        StartLocation,
-        InteractionRange,
-        ObjectTypes, // ✅ ObjectType 지정
-        ACYItemBase::StaticClass(),
-        IgnoreActors,
-        OutActors
-    );
-
+    FVector PlayerLocation = GetOwner()->GetActorLocation();
     ACYItemBase* ClosestItem = nullptr;
     float ClosestDistance = FLT_MAX;
-
-    UE_LOG(LogTemp, Verbose, TEXT("🔍 CheckForNearbyItems: Found %d actors"), OutActors.Num());
-
-    if (bHit)
+    
+    // 모든 아이템 찾기
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACYItemBase::StaticClass(), FoundActors);
+    
+    for (AActor* Actor : FoundActors)
     {
-        for (AActor* Actor : OutActors)
+        ACYItemBase* Item = Cast<ACYItemBase>(Actor);
+        if (!Item || Item->bIsPickedUp) continue;
+        
+        // 트랩의 경우 맵에 배치된 것만 픽업 가능
+        if (ACYTrapBase* Trap = Cast<ACYTrapBase>(Item))
         {
-            if (ACYItemBase* Item = Cast<ACYItemBase>(Actor))
-            {
-                UE_LOG(LogTemp, Verbose, TEXT("🔍 Found item: %s (PickedUp: %s)"), 
-                       *Item->GetName(), Item->bIsPickedUp ? TEXT("true") : TEXT("false"));
-                
-                if (Item->bIsPickedUp) 
-                {
-                    continue;
-                }
-                
-                // ✅ 트랩의 경우 상태 체크
-                if (ACYTrapBase* Trap = Cast<ACYTrapBase>(Item))
-                {
-                    UE_LOG(LogTemp, Verbose, TEXT("🔍 Trap state: %s"), 
-                           Trap->TrapState == ETrapState::MapPlaced ? TEXT("MapPlaced") : TEXT("PlayerPlaced"));
-                    
-                    if (Trap->TrapState != ETrapState::MapPlaced)
-                    {
-                        UE_LOG(LogTemp, Verbose, TEXT("🔍 Trap not pickupable"));
-                        continue;
-                    }
-                }
-                
-                float Distance = FVector::Dist(StartLocation, Item->GetActorLocation());
-                UE_LOG(LogTemp, Verbose, TEXT("🔍 Item %s at distance %f"), *Item->GetName(), Distance);
-                
-                if (Distance < ClosestDistance)
-                {
-                    ClosestDistance = Distance;
-                    ClosestItem = Item;
-                }
-            }
+            if (Trap->TrapState != ETrapState::MapPlaced) continue;
+        }
+        
+        float Distance = FVector::Dist(PlayerLocation, Item->GetActorLocation());
+        if (Distance < InteractionRange && Distance < ClosestDistance)
+        {
+            ClosestDistance = Distance;
+            ClosestItem = Item;
         }
     }
-
-    // ✅ 변경사항이 있을 때만 로그 출력
+    
+    // 변경사항이 있을 때만 업데이트
     if (NearbyItem != ClosestItem)
     {
-        UE_LOG(LogTemp, Warning, TEXT("🔍 Nearby item changed: %s -> %s (Distance: %.1f)"), 
-               NearbyItem ? *NearbyItem->GetName() : TEXT("NULL"),
-               ClosestItem ? *ClosestItem->GetName() : TEXT("NULL"),
-               ClosestDistance);
-               
         NearbyItem = ClosestItem;
         OnRep_NearbyItem();
     }
@@ -217,10 +115,13 @@ void UCYItemInteractionComponent::CheckForNearbyItems()
 
 void UCYItemInteractionComponent::OnRep_NearbyItem()
 {
-    OnNearbyItemChanged.Broadcast(NearbyItem, NearbyItem != nullptr);
-}
-
-UCYInventoryComponent* UCYItemInteractionComponent::GetInventoryComponent() const
-{
-    return GetOwner()->FindComponentByClass<UCYInventoryComponent>();
+    // UI 업데이트를 위한 로그
+    if (NearbyItem)
+    {
+        UE_LOG(LogTemp, Log, TEXT("📦 Nearby item: %s"), *NearbyItem->ItemName.ToString());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("📦 No nearby item"));
+    }
 }

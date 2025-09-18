@@ -1,14 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+
 #include "CYPlayerController.h"
 
 #include "CYPlayerState.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
-#include "Character/CYCharacterBase.h"
-#include "Components/Items/CYInventoryComponent.h"
-#include "Components/Items/CYWeaponComponent.h"
-#include "Items/CYItemBase.h"
-#include "Items/CYWeaponBase.h" // ✅ WeaponBase 헤더 추가
 
 ACYPlayerController::ACYPlayerController(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)

@@ -1,18 +1,23 @@
+// CYItemBase.h - 핵심 로직만 남긴 기본 아이템 클래스
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
-#include "AbilitySystemComponent.h"
 #include "CYItemBase.generated.h"
 
-class UGameplayAbility;
-class UGameplayEffect;
 class ACYPlayerCharacter;
+class UStaticMeshComponent;
+class USphereComponent;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPlayerNearItem, ACYItemBase*, Item, bool, bNear);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnItemPickedUp, ACYItemBase*, Item, ACYPlayerCharacter*, Character);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnItemDropped, ACYItemBase*, Item, ACYPlayerCharacter*, Character);
+UENUM(BlueprintType)
+enum class EItemType : uint8
+{
+    Base,
+    Weapon,
+    Trap,
+    Consumable
+};
 
 UCLASS(Abstract)
 class CATCHMEIFYOUCAN_API ACYItemBase : public AActor
@@ -22,64 +27,38 @@ class CATCHMEIFYOUCAN_API ACYItemBase : public AActor
 public:
     ACYItemBase();
 
-    // Item Info
+    // 기본 아이템 정보
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item")
     FText ItemName;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item")
-    FText ItemDescription;
+    EItemType ItemType = EItemType::Base;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item")
-    FGameplayTag ItemTag;
+    int32 MaxStackCount = 10;
 
-    // GAS Integration
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
-    TSubclassOf<UGameplayAbility> ItemAbility;
+    // 현재 수량 (네트워크 동기화)
+    UPROPERTY(ReplicatedUsing = OnRep_ItemCount, BlueprintReadOnly, Category = "Item")
+    int32 ItemCount = 1;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
-    TArray<TSubclassOf<UGameplayEffect>> ItemEffects;
+    // 픽업 상태 (네트워크 동기화)
+    UPROPERTY(ReplicatedUsing = OnRep_IsPickedUp, BlueprintReadOnly, Category = "Item")
+    bool bIsPickedUp = false;
 
-    // ✅ DesiredTrapEffects 제거됨 - 더 이상 복잡한 데이터 전달 불필요
-
-    // Components
+    // 컴포넌트들
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class UStaticMeshComponent* ItemMesh;
+    UStaticMeshComponent* ItemMesh;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class USphereComponent* InteractionSphere;
+    USphereComponent* InteractionSphere;
 
-    // State
-    UPROPERTY(ReplicatedUsing = OnRep_bIsPickedUp, BlueprintReadOnly, Category = "State")
-    bool bIsPickedUp;
-
-    // Events
-    UPROPERTY(BlueprintAssignable, Category = "Events")
-    FOnPlayerNearItem OnPlayerNearItem;
-
-    UPROPERTY(BlueprintAssignable, Category = "Events")
-    FOnItemPickedUp OnItemPickedUp;
-
-    UPROPERTY(BlueprintAssignable, Category = "Events")
-    FOnItemDropped OnItemDropped;
-
-    // Pickup/Drop
+    // 픽업/사용 함수들
     UFUNCTION(BlueprintCallable, Category = "Item")
     virtual void OnPickup(ACYPlayerCharacter* Character);
 
     UFUNCTION(BlueprintCallable, Category = "Item")
-    virtual void OnDrop(ACYPlayerCharacter* Character);
+    virtual bool UseItem(ACYPlayerCharacter* Character);
 
-    UFUNCTION(Server, Reliable)
-    void ServerPickup(ACYPlayerCharacter* Character);
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item", Replicated)
-    int32 ItemCount = 1;
-
-    // 최대 스택 수량
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item")
-    int32 MaxStackCount = 10;
-
-    // 스택 가능한 아이템인지 체크
     UFUNCTION(BlueprintCallable, Category = "Item")
     bool CanStackWith(ACYItemBase* OtherItem) const;
 
@@ -87,6 +66,14 @@ protected:
     virtual void BeginPlay() override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+    // 네트워크 동기화 함수들
+    UFUNCTION()
+    void OnRep_ItemCount();
+
+    UFUNCTION()
+    void OnRep_IsPickedUp();
+
+    // 충돌 이벤트
     UFUNCTION()
     void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -95,10 +82,4 @@ protected:
     UFUNCTION()
     void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
-    UFUNCTION()
-    void OnRep_bIsPickedUp();
-
-    // 아이템 어빌리티 핸들 (제거할 때 사용)
-    FGameplayAbilitySpecHandle ItemAbilityHandle;
 };

@@ -52,6 +52,6 @@ private:
     void HandleHealthChange();
     void HandleMoveSpeedChange();
     
-    // ✅ testun 방식: 단순한 MovementComponent 제어
+    // 단순한 MovementComponent 제어
     void ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed);
 };

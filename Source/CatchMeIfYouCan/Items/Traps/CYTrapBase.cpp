@@ -1,312 +1,194 @@
-// CYTrapBase.cpp - testun 방식으로 단순화
-
+// CYTrapBase.cpp - 핵심 로직만 남긴 트랩 기본 클래스 구현
 #include "Items/Traps/CYTrapBase.h"
-#include "AbilitySystemComponent.h"
-#include "TimerManager.h"
-#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "Character/CYPlayerCharacter.h"
 #include "Components/SphereComponent.h"
-#include "Components/StaticMeshComponent.h"
-#include "Kismet/GameplayStatics.h"
+#include "AbilitySystemComponent.h"
+#include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
+#include "Engine/Engine.h"
 
 ACYTrapBase::ACYTrapBase()
 {
     ItemName = FText::FromString("Base Trap");
-    ItemDescription = FText::FromString("A base trap class");
-    ItemTag = CYGameplayTags::Item_Trap;
-
-    MaxStackCount = 5;
-    ItemCount = 1;
-    TrapType = ETrapType::Slow;
+    ItemType = EItemType::Trap;
+    MaxStackCount = 5; // 트랩은 스택 가능
+    
     TrapState = ETrapState::MapPlaced;
-
-    bReplicates = true;
-    SetReplicateMovement(true);
-    bAlwaysRelevant = true;
-
+    bIsArmed = false;
+    
     // 기본 설정
     TriggerRadius = 100.0f;
     ArmingDelay = 2.0f;
     TrapLifetime = 60.0f;
-
-    // 기본 트랩 데이터 초기화
-    TrapData.TrapType = TrapType;
-    TrapData.TrapName = ItemName;
-    TrapData.TrapDescription = ItemDescription;
-    TrapData.TriggerRadius = TriggerRadius;
-    TrapData.ArmingDelay = ArmingDelay;
-    TrapData.TrapLifetime = TrapLifetime;
-
-    // 기본 메시 설정 (하위 클래스에서 오버라이드)
-    if (ItemMesh)
-    {
-        static ConstructorHelpers::FObjectFinder<UStaticMesh> BaseTrapMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-        if (BaseTrapMesh.Succeeded())
-        {
-            ItemMesh->SetStaticMesh(BaseTrapMesh.Object);
-            ItemMesh->SetWorldScale3D(FVector(0.5f, 0.5f, 0.1f));
-        }
-    }
 }
 
 void ACYTrapBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    
     DOREPLIFETIME(ACYTrapBase, TrapState);
     DOREPLIFETIME(ACYTrapBase, bIsArmed);
-    DOREPLIFETIME(ACYTrapBase, TrapType);
-    DOREPLIFETIME(ACYTrapBase, TrapData);
 }
 
 void ACYTrapBase::BeginPlay()
 {
     Super::BeginPlay();
-
-    InitializeTrapVisuals();
-    SetupTrapForCurrentState();
     
-    if (HasAuthority())
+    // 기본 메시 설정 (실린더 모양)
+    if (ItemMesh && !ItemMesh->GetStaticMesh())
     {
-        OnTrapSpawned();
-    }
-}
-
-void ACYTrapBase::InitializeTrapVisuals()
-{
-    SetupTrapVisuals();
-}
-
-void ACYTrapBase::SetupTrapForCurrentState()
-{
-    if (!InteractionSphere) return;
-
-    if (TrapState == ETrapState::MapPlaced)
-    {
-        // 픽업 가능 상태
-        InteractionSphere->SetSphereRadius(150.0f);
-        InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-        InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-        InteractionSphere->SetCollisionObjectType(ECC_WorldDynamic);
-        
-        if (HasAuthority())
+        UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder"));
+        if (CylinderMesh)
         {
-            InteractionSphere->OnComponentBeginOverlap.Clear();
-            InteractionSphere->OnComponentEndOverlap.Clear();
-            InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ACYTrapBase::OnPickupSphereOverlap);
-            InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ACYTrapBase::OnPickupSphereEndOverlap);
-        }
-    }
-    else if (TrapState == ETrapState::PlayerPlaced)
-    {
-        // 트리거 모드
-        if (HasAuthority())
-        {
-            SetupTrapTimers();
+            ItemMesh->SetStaticMesh(CylinderMesh);
+            ItemMesh->SetWorldScale3D(FVector(0.5f, 0.5f, 0.1f));
         }
     }
 }
 
-void ACYTrapBase::ConvertToPlayerPlacedTrap(AActor* PlacingPlayer)
+bool ACYTrapBase::UseItem(ACYPlayerCharacter* Character)
+{
+    if (!Character || !HasAuthority()) return false;
+    
+    // 트랩 사용 = 설치 모드로 전환
+    // 실제 설치는 GA_PlaceTrap 어빌리티에서 처리
+    UE_LOG(LogTemp, Warning, TEXT("🎯 Trap ready to place: %s"), *ItemName.ToString());
+    return true;
+}
+
+void ACYTrapBase::PlaceTrap(const FVector& Location, ACYPlayerCharacter* Placer)
 {
     if (!HasAuthority()) return;
-
+    
     TrapState = ETrapState::PlayerPlaced;
-    SetOwner(PlacingPlayer);
+    SetOwner(Placer);
+    SetActorLocation(Location);
+    
+    // 픽업 상태로 변경
     bIsPickedUp = true;
+    SetActorHiddenInGame(false);
+    SetActorEnableCollision(true);
     
-    SetupTrapForCurrentState();
-    MulticastUpdateTrapVisuals();
-    ForceNetUpdate();
-}
-
-void ACYTrapBase::SetupTrapTimers()
-{
-    if (TrapState != ETrapState::PlayerPlaced) return;
-
-    GetWorld()->GetTimerManager().SetTimer(ArmingTimer, this, &ACYTrapBase::ArmTrap, 
-                                          TrapData.ArmingDelay, false);
-    
-    GetWorld()->GetTimerManager().SetTimer(LifetimeTimer, [this]()
+    // 충돌 이벤트 재설정
+    if (InteractionSphere)
     {
-        Destroy();
-    }, TrapData.TrapLifetime, false);
+        InteractionSphere->OnComponentBeginOverlap.Clear();
+        InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ACYTrapBase::OnTrapSphereOverlap);
+    }
+    
+    // 타이머 설정
+    GetWorld()->GetTimerManager().SetTimer(ArmingTimer, this, &ACYTrapBase::ArmTrap, ArmingDelay, false);
+    GetWorld()->GetTimerManager().SetTimer(LifetimeTimer, [this](){ Destroy(); }, TrapLifetime, false);
+    
+    UE_LOG(LogTemp, Warning, TEXT("🎯 Trap placed: %s at %s"), 
+           *ItemName.ToString(), *Location.ToString());
 }
 
 void ACYTrapBase::ArmTrap()
 {
     if (!HasAuthority() || TrapState != ETrapState::PlayerPlaced) return;
-
+    
     bIsArmed = true;
-
+    
+    // 트리거 반경으로 변경
     if (InteractionSphere)
     {
-        InteractionSphere->SetSphereRadius(TrapData.TriggerRadius);
-        InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-        InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-        
-        InteractionSphere->OnComponentBeginOverlap.Clear();
-        InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ACYTrapBase::OnTriggerSphereOverlap);
+        InteractionSphere->SetSphereRadius(TriggerRadius);
     }
-
-    ForceNetUpdate();
-    OnTrapArmed();
-}
-
-void ACYTrapBase::OnTriggerSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-        bool bFromSweep, const FHitResult& SweepResult)
-{
-    if (TrapState != ETrapState::PlayerPlaced || !bIsArmed || !HasAuthority()) return;
-
-    if (OtherActor == GetOwner()) return;
-
-    ACYPlayerCharacter* Target = Cast<ACYPlayerCharacter>(OtherActor);
-    if (!Target) return;
-
-    UE_LOG(LogTemp, Warning, TEXT("TRAP TRIGGERED! %s stepped on %s's trap"), 
-           *Target->GetName(), 
-           GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"));
-
-    OnTrapTriggered(Target);
-    ApplyTrapEffects(Target);
-    MulticastOnTrapTriggered(Target);
     
-    Destroy();
-}
-
-void ACYTrapBase::ApplyTrapEffects(ACYPlayerCharacter* Target)
-{
-    if (!Target) return;
-
-    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
-    if (!TargetASC) return;
-
-    UE_LOG(LogTemp, Warning, TEXT("🎯 Applying trap effects to %s"), *Target->GetName());
-
-    // ✅ testun 방식: 단순한 GameplayEffect 적용
-    for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
-    {
-        if (EffectClass)
-        {
-            ApplySingleEffect(TargetASC, EffectClass);
-        }
-    }
-
-    for (TSubclassOf<UGameplayEffect> EffectClass : ItemEffects)
-    {
-        if (EffectClass)
-        {
-            ApplySingleEffect(TargetASC, EffectClass);
-        }
-    }
-
-    ApplyCustomEffects(Target);
-}
-
-FActiveGameplayEffectHandle ACYTrapBase::ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass)
-{
-    if (!TargetASC || !EffectClass) 
-    {
-        return FActiveGameplayEffectHandle();
-    }
-
-    FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
-    EffectContext.AddSourceObject(this);
+    UE_LOG(LogTemp, Warning, TEXT("🎯 Trap armed: %s"), *ItemName.ToString());
     
-    FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
-    if (EffectSpec.IsValid())
+    // 시각적 효과
+    if (GEngine)
     {
-        FActiveGameplayEffectHandle Handle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
-        if (Handle.IsValid())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("✅ Applied effect: %s"), *EffectClass->GetName());
-        }
-        return Handle;
-    }
-
-    return FActiveGameplayEffectHandle();
-}
-
-void ACYTrapBase::MulticastUpdateTrapVisuals_Implementation()
-{
-    InitializeTrapVisuals();
-}
-
-void ACYTrapBase::MulticastOnTrapTriggered_Implementation(ACYPlayerCharacter* Target)
-{
-    if (!HasAuthority())
-    {
-        OnTrapTriggered(Target);
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, 
+            FString::Printf(TEXT("%s ARMED!"), *ItemName.ToString()));
     }
 }
 
-void ACYTrapBase::OnPickupSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+void ACYTrapBase::OnTrapSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
-    OnSphereOverlap(OverlappedComponent, OtherActor, OtherComp, OtherBodyIndex, bFromSweep, SweepResult);
+    // 트랩이 활성화 상태가 아니면 무시
+    if (TrapState != ETrapState::PlayerPlaced || !bIsArmed || !HasAuthority()) return;
+    
+    // 설치한 플레이어는 무시
+    if (OtherActor == GetOwner()) return;
+    
+    ACYPlayerCharacter* Target = Cast<ACYPlayerCharacter>(OtherActor);
+    if (!Target) return;
+    
+    OnTrapTriggered(Target);
 }
 
-void ACYTrapBase::OnPickupSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+void ACYTrapBase::OnTrapTriggered(ACYPlayerCharacter* Target)
 {
-    OnSphereEndOverlap(OverlappedComponent, OtherActor, OtherComp, OtherBodyIndex);
-}
-
-void ACYTrapBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-    OnTrapDestroyed();
-    Super::EndPlay(EndPlayReason);
-}
-
-// 기본 구현들 (하위 클래스에서 오버라이드)
-void ACYTrapBase::OnTrapSpawned_Implementation()
-{
-    UE_LOG(LogTemp, Log, TEXT("Base trap spawned"));
-}
-
-void ACYTrapBase::OnTrapArmed_Implementation()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Trap armed: %s"), *ItemName.ToString());
-    PlayTrapSound();
-}
-
-void ACYTrapBase::OnTrapTriggered_Implementation(ACYPlayerCharacter* Target)
-{
-    if (Target)
+    if (!Target || !HasAuthority()) return;
+    
+    UE_LOG(LogTemp, Warning, TEXT("💥 TRAP TRIGGERED! %s stepped on %s's trap"), 
+           *Target->GetName(), 
+           GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"));
+    
+    // GAS 효과 적용
+    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
+    if (TargetASC)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Base trap triggered on %s"), *Target->GetName());
+        for (TSubclassOf<UGameplayEffect> EffectClass : TrapEffects)
+        {
+            if (EffectClass)
+            {
+                FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
+                EffectContext.AddSourceObject(this);
+                
+                FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
+                if (EffectSpec.IsValid())
+                {
+                    TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
+                    UE_LOG(LogTemp, Warning, TEXT("✅ Applied trap effect: %s"), *EffectClass->GetName());
+                }
+            }
+        }
+    }
+    
+    // 블루프린트 커스텀 효과
+    ApplyTrapEffect(Target);
+    
+    // 화면 메시지
+    if (GEngine)
+    {
+        FString TrapTypeName;
+        switch (TrapType)
+        {
+            case ETrapType::Slow: TrapTypeName = TEXT("SLOWED"); break;
+            case ETrapType::Freeze: TrapTypeName = TEXT("FROZEN"); break;
+            case ETrapType::Damage: TrapTypeName = TEXT("DAMAGED"); break;
+        }
+        
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, 
+            FString::Printf(TEXT("%s %s!"), *Target->GetName(), *TrapTypeName));
+    }
+    
+    // 트랩 제거
+    Destroy();
+}
+
+void ACYTrapBase::OnRep_TrapState()
+{
+    // 상태 변경 시 시각적 업데이트
+    if (TrapState == ETrapState::PlayerPlaced)
+    {
+        SetActorHiddenInGame(false);
+        SetActorEnableCollision(true);
     }
 }
 
-void ACYTrapBase::OnTrapDestroyed_Implementation()
+void ACYTrapBase::OnRep_IsArmed()
 {
-    UE_LOG(LogTemp, Log, TEXT("Base trap destroyed"));
-}
-
-void ACYTrapBase::SetupTrapVisuals_Implementation()
-{
-    if (ItemMesh)
+    // 활성화 시 시각적 효과
+    if (bIsArmed && GEngine)
     {
-        ItemMesh->SetVisibility(true);
-        ItemMesh->SetHiddenInGame(false);
-        ItemMesh->SetCastShadow(true);
-        ItemMesh->MarkRenderStateDirty();
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, 
+            FString::Printf(TEXT("%s ARMED!"), *ItemName.ToString()));
     }
-}
-
-void ACYTrapBase::PlayTrapSound_Implementation()
-{
-    if (TrapData.TriggerSound)
-    {
-        UGameplayStatics::PlaySoundAtLocation(GetWorld(), TrapData.TriggerSound, GetActorLocation());
-    }
-}
-
-void ACYTrapBase::ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target)
-{
-    // 하위 클래스에서 구현
 }

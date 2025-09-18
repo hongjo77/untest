@@ -1,46 +1,40 @@
-// CYItemBase.cpp - 어빌리티 중복 등록 방지
+// CYItemBase.cpp - 핵심 로직만 남긴 기본 아이템 클래스 구현
 #include "Items/CYItemBase.h"
-#include "AbilitySystem/CYAbilitySystemComponent.h"
-#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "Character/CYPlayerCharacter.h"
-#include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SphereComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
-#include "Items/CYWeaponBase.h"
 
 ACYItemBase::ACYItemBase()
 {
-	PrimaryActorTick.bCanEverTick = false;
-	bReplicates = true;
-	SetReplicateMovement(true);
+    PrimaryActorTick.bCanEverTick = false;
+    bReplicates = true;
+    SetReplicateMovement(true);
 
-	// Root Component
-	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+    // Root Component
+    RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
-	// Mesh Component
-	ItemMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ItemMesh"));
-	ItemMesh->SetupAttachment(RootComponent);
-	ItemMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	ItemMesh->SetCollisionResponseToAllChannels(ECR_Block);
-	ItemMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    // Mesh Component
+    ItemMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ItemMesh"));
+    ItemMesh->SetupAttachment(RootComponent);
+    ItemMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    ItemMesh->SetCollisionResponseToAllChannels(ECR_Block);
+    ItemMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 
-	// Interaction Sphere
-	InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
-	InteractionSphere->SetupAttachment(RootComponent);
-	InteractionSphere->SetSphereRadius(150.0f);
-	InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-	InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-    
-	InteractionSphere->SetCollisionObjectType(ECC_WorldDynamic);
+    // Interaction Sphere
+    InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
+    InteractionSphere->SetupAttachment(RootComponent);
+    InteractionSphere->SetSphereRadius(150.0f);
+    InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+    InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+    InteractionSphere->SetCollisionObjectType(ECC_WorldDynamic);
 
-	// ✅ 팀프로젝트 방식으로 태그 설정
-	ItemTag = CYGameplayTags::Item_Base;
-    
-	bIsPickedUp = false;
-	ItemCount = 1;
-	MaxStackCount = 10;
+    // 기본값 설정
+    bIsPickedUp = false;
+    ItemCount = 1;
+    MaxStackCount = 10;
 }
 
 void ACYItemBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -48,13 +42,14 @@ void ACYItemBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     
     DOREPLIFETIME(ACYItemBase, bIsPickedUp);
-    DOREPLIFETIME(ACYItemBase, ItemCount); 
+    DOREPLIFETIME(ACYItemBase, ItemCount);
 }
 
 void ACYItemBase::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 서버에서만 충돌 이벤트 등록
     if (HasAuthority())
     {
         InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ACYItemBase::OnSphereOverlap);
@@ -62,22 +57,75 @@ void ACYItemBase::BeginPlay()
     }
 }
 
+void ACYItemBase::OnPickup(ACYPlayerCharacter* Character)
+{
+    if (!Character || bIsPickedUp || !HasAuthority()) return;
+
+    bIsPickedUp = true;
+    
+    // 아이템을 숨기고 충돌 비활성화
+    SetActorHiddenInGame(true);
+    SetActorEnableCollision(false);
+    
+    UE_LOG(LogTemp, Warning, TEXT("✅ Item picked up: %s"), *ItemName.ToString());
+}
+
+bool ACYItemBase::UseItem(ACYPlayerCharacter* Character)
+{
+    if (!Character) return false;
+    
+    // 기본 구현: 소모품 처리
+    if (ItemType == EItemType::Consumable && ItemCount > 0)
+    {
+        ItemCount--;
+        UE_LOG(LogTemp, Warning, TEXT("🔧 Used item: %s (Remaining: %d)"), 
+               *ItemName.ToString(), ItemCount);
+        return true;
+    }
+    
+    return false;
+}
+
+bool ACYItemBase::CanStackWith(ACYItemBase* OtherItem) const
+{
+    if (!OtherItem) return false;
+    
+    // 같은 클래스이고, 스택 가능하고, 공간이 있어야 함
+    return (GetClass() == OtherItem->GetClass()) && 
+           (MaxStackCount > 1) && 
+           (OtherItem->ItemCount < OtherItem->MaxStackCount);
+}
+
+void ACYItemBase::OnRep_ItemCount()
+{
+    // 아이템 수량 변경 시 UI 업데이트 등
+    UE_LOG(LogTemp, Log, TEXT("Item count updated: %s x%d"), *ItemName.ToString(), ItemCount);
+}
+
+void ACYItemBase::OnRep_IsPickedUp()
+{
+	if (bIsPickedUp)
+	{
+		SetActorHiddenInGame(true);
+		SetActorEnableCollision(false);
+	}
+	else
+	{
+		SetActorHiddenInGame(false);
+		SetActorEnableCollision(true);
+	}
+}
+
 void ACYItemBase::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-    bool bFromSweep, const FHitResult& SweepResult)
+                                  UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+                                  bool bFromSweep, const FHitResult& SweepResult)
 {
     if (bIsPickedUp) return;
 
     if (ACYPlayerCharacter* Character = Cast<ACYPlayerCharacter>(OtherActor))
     {
-        // UI 힌트 표시를 위한 이벤트
-        UE_LOG(LogTemp, Warning, TEXT("Player near item: %s"), *ItemName.ToString());
-        
-        // 클라이언트에서 UI 업데이트
-        if (Character->IsLocallyControlled())
-        {
-            OnPlayerNearItem.Broadcast(this, true);
-        }
+        // UI 힌트 표시
+        UE_LOG(LogTemp, Log, TEXT("Player near item: %s"), *ItemName.ToString());
     }
 }
 
@@ -87,135 +135,6 @@ void ACYItemBase::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, A
     if (ACYPlayerCharacter* Character = Cast<ACYPlayerCharacter>(OtherActor))
     {
         // UI 힌트 숨기기
-        if (Character->IsLocallyControlled())
-        {
-            OnPlayerNearItem.Broadcast(this, false);
-        }
+        UE_LOG(LogTemp, Log, TEXT("Player left item area: %s"), *ItemName.ToString());
     }
-}
-
-void ACYItemBase::OnPickup(ACYPlayerCharacter* Character)
-{
-	if (!Character || bIsPickedUp) return;
-
-	UCYAbilitySystemComponent* ASC = Cast<UCYAbilitySystemComponent>(Character->GetAbilitySystemComponent());
-	if (!ASC) return;
-
-	// ✅ 팀프로젝트 방식으로 태그 사용
-	if (!ItemTag.MatchesTag(CYGameplayTags::Item_Trap) && ItemAbility && !ItemAbilityHandle.IsValid())
-	{
-		ItemAbilityHandle = ASC->GiveItemAbility(ItemAbility, 1);
-		UE_LOG(LogTemp, Warning, TEXT("Granted ability for item: %s"), *ItemName.ToString());
-	}
-	else if (ItemTag.MatchesTag(CYGameplayTags::Item_Trap))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Trap item picked up: %s (No ability granted - using central trap ability)"), *ItemName.ToString());
-	}
-	else if (ItemAbilityHandle.IsValid())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Ability already granted for item: %s"), *ItemName.ToString());
-	}
-
-	// Apply item effects
-	for (TSubclassOf<UGameplayEffect> EffectClass : ItemEffects)
-	{
-		if (EffectClass)
-		{
-			FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
-			ContextHandle.AddSourceObject(this);
-            
-			FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, 1, ContextHandle);
-			if (SpecHandle.IsValid())
-			{
-				ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-			}
-		}
-	}
-
-	bIsPickedUp = true;
-	OnItemPickedUp.Broadcast(this, Character);
-}
-
-void ACYItemBase::OnDrop(ACYPlayerCharacter* Character)
-{
-    if (!Character) return;
-
-    UCYAbilitySystemComponent* ASC = Cast<UCYAbilitySystemComponent>(Character->GetAbilitySystemComponent());
-    if (!ASC) return;
-
-    // Remove item ability
-    if (ItemAbilityHandle.IsValid())
-    {
-        ASC->RemoveItemAbility(ItemAbilityHandle);
-        // FGameplayAbilitySpecHandle을 무효화하는 올바른 방법
-        ItemAbilityHandle = FGameplayAbilitySpecHandle();  // 기본 생성자로 초기화 = 무효한 핸들
-    }
-
-    // 아이템 드랍 로직
-    bIsPickedUp = false;
-    
-    // 충돌 다시 활성화
-    ItemMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    
-    SetActorHiddenInGame(false);
-    
-    // 드랍 이벤트
-    OnItemDropped.Broadcast(this, Character);
-}
-
-void ACYItemBase::ServerPickup_Implementation(ACYPlayerCharacter* Character)
-{
-    if (!HasAuthority() || !Character || bIsPickedUp) return;
-
-    OnPickup(Character);
-
-    // 아이템 숨기기 (무기가 아닌 경우에만)
-    if (!IsA<ACYWeaponBase>())
-    {
-        SetActorHiddenInGame(true);
-        SetActorEnableCollision(false);
-        
-        // 일정 시간 후 제거 또는 리스폰
-        SetLifeSpan(2.0f);
-    }
-}
-
-void ACYItemBase::OnRep_bIsPickedUp()
-{
-    if (bIsPickedUp)
-    {
-        // 클라이언트에서 아이템 숨기기
-        if (!IsA<ACYWeaponBase>())
-        {
-            SetActorHiddenInGame(true);
-            SetActorEnableCollision(false);
-        }
-    }
-    else
-    {
-        // 아이템이 드랍되었을 때
-        SetActorHiddenInGame(false);
-        SetActorEnableCollision(true);
-    }
-}
-
-bool ACYItemBase::CanStackWith(ACYItemBase* OtherItem) const
-{
-    if (!OtherItem) return false;
-    
-    // ✅ 더 관대한 스택 조건
-    // 1. 같은 클래스여야 함
-    // 2. 스택 가능해야 함 (MaxStackCount > 1)
-    // 3. 다른 아이템이 최대 스택이 아니어야 함
-    bool bSameClass = (GetClass() == OtherItem->GetClass());
-    bool bStackable = (MaxStackCount > 1);
-    bool bHasSpace = (OtherItem->ItemCount < OtherItem->MaxStackCount);
-    
-    UE_LOG(LogTemp, Warning, TEXT("CanStackWith: SameClass=%s, Stackable=%s, HasSpace=%s"), 
-           bSameClass ? TEXT("true") : TEXT("false"),
-           bStackable ? TEXT("true") : TEXT("false"),
-           bHasSpace ? TEXT("true") : TEXT("false"));
-    
-    return bSameClass && bStackable && bHasSpace;
 }
