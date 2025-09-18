@@ -1,4 +1,5 @@
-// CYTrapBase.h - 트랩 효과 개선 함수 추가
+// CYTrapBase.h - 기존 설계 유지, 불필요한 복잡성만 제거
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -31,9 +32,6 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "Trap State", Replicated)
     bool bIsArmed = false;
 
-    UFUNCTION(BlueprintCallable, Category = "Trap")
-    void ConvertToPlayerPlacedTrap(AActor* PlacingPlayer);
-
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Data", Replicated)
     FTrapData TrapData;
 
@@ -48,6 +46,9 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Settings")
     float TrapLifetime = 60.0f;
+
+    UFUNCTION(BlueprintCallable, Category = "Trap")
+    void ConvertToPlayerPlacedTrap(AActor* PlacingPlayer);
 
     // 이벤트 함수들 (하위 클래스에서 오버라이드)
     UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
@@ -66,6 +67,20 @@ public:
     void OnTrapDestroyed();
     virtual void OnTrapDestroyed_Implementation();
 
+    // 시각적/오디오 설정 (하위 클래스에서 오버라이드)
+    UFUNCTION(BlueprintNativeEvent, Category = "Trap Visuals")
+    void SetupTrapVisuals();
+    virtual void SetupTrapVisuals_Implementation();
+
+    UFUNCTION(BlueprintNativeEvent, Category = "Trap Audio")
+    void PlayTrapSound();
+    virtual void PlayTrapSound_Implementation();
+
+    // 커스텀 효과 (하위 클래스에서 오버라이드)
+    UFUNCTION(BlueprintNativeEvent, Category = "Trap Effects")
+    void ApplyCustomEffects(ACYPlayerCharacter* Target);
+    virtual void ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target);
+
     // 멀티캐스트 함수들
     UFUNCTION(NetMulticast, Reliable, Category = "Trap Events")
     void MulticastOnTrapTriggered(ACYPlayerCharacter* Target);
@@ -73,43 +88,18 @@ public:
     UFUNCTION(NetMulticast, Reliable, Category = "Trap Visuals")
     void MulticastUpdateTrapVisuals();
 
-    UFUNCTION(BlueprintCallable, Category = "Trap")
-    void ApplyTrapEffects(ACYPlayerCharacter* Target);
-
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-    // 시각적 설정 함수들 (하위 클래스에서 오버라이드 필수)
-    UFUNCTION(BlueprintCallable, Category = "Trap Initialization")
+    // 핵심 트랩 로직
     void InitializeTrapVisuals();
+    void SetupTrapForCurrentState();
+    void SetupTrapTimers();
+    void ArmTrap();
 
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Visuals")
-    void SetupTrapVisuals();
-    virtual void SetupTrapVisuals_Implementation();
-
-    // 트랩 사운드 재생 (하위 클래스에서 오버라이드)
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Audio")
-    void PlayTrapSound();
-    virtual void PlayTrapSound_Implementation();
-
-    // 하위 클래스별 커스텀 효과 적용 (하위 클래스에서 오버라이드)
-    UFUNCTION(BlueprintNativeEvent, Category = "Trap Effects")
-    void ApplyCustomEffects(ACYPlayerCharacter* Target);
-    virtual void ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target);
-
-    // ✅ 새로 추가된 트랩 효과 관련 함수들
-    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
-    bool EnsureTargetHasCombatAttributeSet(ACYPlayerCharacter* Target);
-
-    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
-    void LogCurrentMoveSpeed(ACYPlayerCharacter* Target);
-
-    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
-    void ApplyDirectMovementControl(ACYPlayerCharacter* Target);
-
-    // 오버랩 이벤트 핸들러들
+    // 오버랩 이벤트들
     UFUNCTION()
     void OnTriggerSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -124,18 +114,11 @@ protected:
     void OnPickupSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-    // 타이머 핸들러
-    UFUNCTION()
-    void ArmTrap();
+    // 트랩 효과 적용 (단순화됨)
+    UFUNCTION(BlueprintCallable, Category = "Trap")
+    void ApplyTrapEffects(ACYPlayerCharacter* Target);
 
-    // 트랩 상태 설정
-    void SetupTrapForCurrentState();
-
-    // 개별 효과 적용
     FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
-
-    // 타이머 설정
-    void SetupTrapTimers();
 
 private:
     FTimerHandle ArmingTimer;
