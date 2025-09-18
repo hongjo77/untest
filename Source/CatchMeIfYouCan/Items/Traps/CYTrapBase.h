@@ -123,7 +123,7 @@ protected:
     void SetupTrapForCurrentState();
 
     // 개별 효과 적용
-    void ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
+	FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
 
     // 타이머 설정
     void SetupTrapTimers();

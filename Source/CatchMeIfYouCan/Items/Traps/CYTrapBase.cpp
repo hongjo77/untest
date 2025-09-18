@@ -4,9 +4,12 @@
 #include "AbilitySystemComponent.h"
 #include "TimerManager.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
+#include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Character/CYPlayerCharacter.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Items/CYTrapFactory.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "Net/UnrealNetwork.h"
@@ -336,46 +339,142 @@ void ACYTrapBase::ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target)
 
 void ACYTrapBase::ApplyTrapEffects(ACYPlayerCharacter* Target)
 {
-    if (!Target) return;
+    if (!Target) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target is null"));
+        return;
+    }
 
     UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
-    if (!TargetASC) return;
+    if (!TargetASC) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target has no AbilitySystemComponent"));
+        return;
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("🎯 Applying trap effects to %s"), *Target->GetName());
+    UE_LOG(LogTemp, Warning, TEXT("🎯 TrapData effects: %d, ItemEffects: %d"), 
+           TrapData.GameplayEffects.Num(), ItemEffects.Num());
 
+    // ✅ 트랩 타입별 효과 적용 전 로그
+    FString TrapTypeName = UCYTrapFactory::GetTrapTypeName(TrapType);
+    UE_LOG(LogTemp, Warning, TEXT("🎯 Applying %s effects"), *TrapTypeName);
+
+    // ✅ 트리거 전 현재 MoveSpeed 확인
+	const UAttributeSet* ConstAttrSet = TargetASC->GetAttributeSet(UCYCombatAttributeSet::StaticClass());
+    if (UCYCombatAttributeSet* CombatAttrSet = const_cast<UCYCombatAttributeSet*>(Cast<UCYCombatAttributeSet>(ConstAttrSet)))
+    {
+        float CurrentMoveSpeed = CombatAttrSet->GetMoveSpeed();
+        UE_LOG(LogTemp, Warning, TEXT("🏃 Target's current MoveSpeed: %f"), CurrentMoveSpeed);
+    }
+
+    // TrapData의 GameplayEffects 적용
+    int32 EffectCount = 0;
     for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
     {
         if (EffectClass)
         {
-            ApplySingleEffect(TargetASC, EffectClass);
+            FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
+            if (Handle.IsValid())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("✅ Applied TrapData effect [%d]: %s (Handle: %s)"), 
+                       EffectCount, *EffectClass->GetName(), *Handle.ToString());
+                EffectCount++;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Failed to apply TrapData effect: %s"), *EffectClass->GetName());
+            }
         }
     }
 
+    // ItemEffects 적용
     for (TSubclassOf<UGameplayEffect> EffectClass : ItemEffects)
     {
         if (EffectClass)
         {
-            ApplySingleEffect(TargetASC, EffectClass);
+            FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
+            if (Handle.IsValid())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("✅ Applied ItemEffect [%d]: %s"), 
+                       EffectCount, *EffectClass->GetName());
+                EffectCount++;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Failed to apply ItemEffect: %s"), *EffectClass->GetName());
+            }
         }
     }
 
+    // ✅ 효과 적용 후 MoveSpeed 재확인
+	if (UCYCombatAttributeSet* CombatAttrSet = const_cast<UCYCombatAttributeSet*>(Cast<UCYCombatAttributeSet>(ConstAttrSet)))
+    {
+        // 약간의 지연 후 확인 (비동기 적용 고려)
+        GetWorld()->GetTimerManager().SetTimerForNextTick([this, Target, CombatAttrSet]()
+        {
+            if (IsValid(Target) && IsValid(CombatAttrSet))
+            {
+                float NewMoveSpeed = CombatAttrSet->GetMoveSpeed();
+                UE_LOG(LogTemp, Warning, TEXT("🏃 Target's MoveSpeed after effects: %f"), NewMoveSpeed);
+                
+                // ✅ CharacterMovementComponent도 확인
+                if (ACharacter* Character = Cast<ACharacter>(Target))
+                {
+                    if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("🏃 CharacterMovement MaxWalkSpeed: %f"), 
+                               MovementComp->MaxWalkSpeed);
+                        
+                        // ✅ 만약 AttributeSet과 MovementComponent가 다르다면 강제 동기화
+                        if (FMath::Abs(NewMoveSpeed - MovementComp->MaxWalkSpeed) > 1.0f)
+                        {
+                            UE_LOG(LogTemp, Error, TEXT("❌ MoveSpeed desync detected! Forcing sync..."));
+                            CombatAttrSet->HandleMoveSpeedChange(); // 강제 재동기화
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 커스텀 효과 적용
     ApplyCustomEffects(Target);
 
-    UE_LOG(LogTemp, Log, TEXT("✅ Applied %d trap effects"), 
-           TrapData.GameplayEffects.Num() + ItemEffects.Num());
+    UE_LOG(LogTemp, Warning, TEXT("✅ Applied %d total trap effects to %s"), 
+           EffectCount, *Target->GetName());
 }
 
-void ACYTrapBase::ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass)
+FActiveGameplayEffectHandle ACYTrapBase::ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass)
 {
-    if (!TargetASC || !EffectClass) return;
+	if (!TargetASC || !EffectClass) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ ApplySingleEffect: Invalid parameters"));
+		return FActiveGameplayEffectHandle();
+	}
 
-    FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
-    EffectContext.AddSourceObject(this);
+	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
+	EffectContext.AddSourceObject(this);
     
-    FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
-    if (EffectSpec.IsValid())
-    {
-        TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
-        UE_LOG(LogTemp, Log, TEXT("Applied effect: %s"), *EffectClass->GetName());
-    }
+	FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
+	if (EffectSpec.IsValid())
+	{
+		FActiveGameplayEffectHandle Handle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
+        
+		if (Handle.IsValid())
+		{
+			UE_LOG(LogTemp, Log, TEXT("✅ Successfully applied effect: %s"), *EffectClass->GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("❌ Failed to get valid handle for effect: %s"), *EffectClass->GetName());
+		}
+        
+		return Handle;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ Failed to create effect spec for: %s"), *EffectClass->GetName());
+		return FActiveGameplayEffectHandle();
+	}
 }

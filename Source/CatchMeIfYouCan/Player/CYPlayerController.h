@@ -15,9 +15,9 @@ UCLASS()
 class CATCHMEIFYOUCAN_API ACYPlayerController : public APlayerController
 {
 	GENERATED_BODY()
-	
+    
 public:
-	
+    
 	ACYPlayerController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	UFUNCTION(BlueprintCallable, Category = "CY|PlayerController")
@@ -25,6 +25,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "CY|PlayerController")
 	UCYAbilitySystemComponent* GetCYAbilitySystemComponent() const;
+
+	// ✅ 인벤토리 표시 함수 (임시 디버깅용)
+	UFUNCTION(BlueprintCallable, Category = "CY|Inventory")
+	void DisplayInventoryStatus();
+	UFUNCTION(BlueprintCallable, Category = "CY|Input")
+	void AttackPressed();
 
 protected:
 

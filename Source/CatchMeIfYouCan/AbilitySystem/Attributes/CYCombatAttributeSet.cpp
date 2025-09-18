@@ -1,8 +1,10 @@
-﻿#include "CYCombatAttributeSet.h"
+﻿#include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/Pawn.h"
 
 UCYCombatAttributeSet::UCYCombatAttributeSet()
 {
@@ -68,7 +70,22 @@ void UCYCombatAttributeSet::HandleMoveSpeedChange()
 {
     float NewMoveSpeed = GetMoveSpeed();
     
-    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
+    // ✅ PlayerState -> Character 경로로 Character 찾기
+    ACharacter* Character = nullptr;
+    
+    // 직접적으로 Character인지 확인
+    Character = Cast<ACharacter>(GetOwningActor());
+    
+    // PlayerState를 통해 Character 찾기
+    if (!Character)
+    {
+        if (APlayerState* PlayerState = Cast<APlayerState>(GetOwningActor()))
+        {
+            Character = Cast<ACharacter>(PlayerState->GetPawn());
+        }
+    }
+    
+    if (Character)
     {
         if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
         {
@@ -123,13 +140,8 @@ void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMov
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
     
-    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
-    {
-        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
-        {
-            ApplyMovementRestrictions(MovementComp, GetMoveSpeed());
-        }
-    }
+    // ✅ 클라이언트에서도 움직임 제한 적용
+    HandleMoveSpeedChange();
 }
 
 void UCYCombatAttributeSet::OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower)

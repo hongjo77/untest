@@ -37,6 +37,8 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
+	
+	void HandleMoveSpeedChange();
 
 protected:
     UFUNCTION()
@@ -50,6 +52,5 @@ protected:
 
 private:
     void HandleHealthChange();
-    void HandleMoveSpeedChange();
     void ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed);
 };
