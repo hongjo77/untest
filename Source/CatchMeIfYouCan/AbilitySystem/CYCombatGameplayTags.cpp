@@ -21,6 +21,10 @@ namespace CYGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Cooldown_Combat_WeaponAttack, "Cooldown.Combat.WeaponAttack");
 	UE_DEFINE_GAMEPLAY_TAG(Cooldown_Combat_TrapPlace, "Cooldown.Combat.TrapPlace");
 
+	// ✅ 새로 추가된 Effect 태그들
+	UE_DEFINE_GAMEPLAY_TAG(Effect_Debuff_Slow, "Effect.Debuff.Slow");
+	UE_DEFINE_GAMEPLAY_TAG(Effect_Debuff_Freeze, "Effect.Debuff.Freeze");
+
 	// Event Tags
 	UE_DEFINE_GAMEPLAY_TAG(Event_Item_Use, "Event.Item.Use");
 

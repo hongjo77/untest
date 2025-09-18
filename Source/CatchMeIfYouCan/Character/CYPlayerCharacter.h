@@ -38,13 +38,14 @@ protected:
 
 	// 아이템 입력 추가
 	void Input_Interact(const FInputActionValue& InputActionValue);
-	void Input_Attack(const FInputActionValue& InputActionValue);
 	void Input_UseSlot1(const FInputActionValue& InputActionValue);
 	void Input_UseSlot2(const FInputActionValue& InputActionValue);
 	void Input_UseSlot3(const FInputActionValue& InputActionValue);
 	void Input_UseSlot4(const FInputActionValue& InputActionValue);
 	void Input_UseSlot5(const FInputActionValue& InputActionValue);
 	void Input_UseSlot6(const FInputActionValue& InputActionValue);
+	UFUNCTION(BlueprintCallable, Category = "CY|Inventory")
+	void DisplayInventoryStatus();
 
 	// Client측 ASC초기화 등 수행
 	virtual void OnRep_PlayerState() override;

@@ -62,42 +62,6 @@ void ACYCharacterBase::InitializeAbilitySets()
 			AbilitySet->GiveToAbilitySystem(CYASC, &GrantedHandles);
 		}
 	}
-
-	// Item 트랩에서 Move 관련 확인
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
-		{
-			if (IsValid(this) && CYAbilitySystemComponent.IsValid())
-			{
-				UCYAbilitySystemComponent* CYASC = CYAbilitySystemComponent.Get();
-				const UAttributeSet* ConstAttrSet = CYASC->GetAttributeSet(UCYCombatAttributeSet::StaticClass());
-				if (UCYCombatAttributeSet* CombatAttrSet = const_cast<UCYCombatAttributeSet*>(Cast<UCYCombatAttributeSet>(ConstAttrSet)))
-				{
-					float CurrentMoveSpeed = CombatAttrSet->GetMoveSpeed();
-					UE_LOG(LogTemp, Warning, TEXT("🏃 %s initial MoveSpeed: %f"), 
-						   *GetName(), CurrentMoveSpeed);
-                    
-					// CharacterMovementComponent와 동기화 확인
-					if (ACharacter* Character = Cast<ACharacter>(this))
-					{
-						if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
-						{
-							UE_LOG(LogTemp, Warning, TEXT("🏃 %s CharacterMovement MaxWalkSpeed: %f"), 
-								   *GetName(), MovementComp->MaxWalkSpeed);
-                            
-							// 동기화가 안 되어 있다면 강제 동기화
-							if (FMath::Abs(CurrentMoveSpeed - MovementComp->MaxWalkSpeed) > 10.0f)
-							{
-								UE_LOG(LogTemp, Warning, TEXT("⚠️ Initial MoveSpeed desync, forcing sync..."));
-								CombatAttrSet->HandleMoveSpeedChange();
-							}
-						}
-					}
-				}
-			}
-		});
-	}
 }
 
 void ACYCharacterBase::RemoveAbilitySets()

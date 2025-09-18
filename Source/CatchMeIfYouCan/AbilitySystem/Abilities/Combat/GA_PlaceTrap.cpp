@@ -51,15 +51,6 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
     UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap: OwnerActor found: %s"), *OwnerActor->GetName());
 
-    // 쿨다운 체크
-    const FGameplayTagContainer* CooldownTags = GetCooldownTags();
-    if (CooldownTags && ActorInfo->AbilitySystemComponent->HasAnyMatchingGameplayTags(*CooldownTags))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⏰ GA_PlaceTrap: On cooldown"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-        return;
-    }
-
     // ✅ SourceObject에서 특정 아이템 가져오기 (우선순위 1)
     ACYItemBase* SourceItem = GetSourceItemFromAbility(Handle, ActorInfo);
     
@@ -105,9 +96,7 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
         UE_LOG(LogTemp, Error, TEXT("❌ Failed to create trap from item: %s"), 
                *SourceItem->ItemName.ToString());
     }
-
-    // 쿨다운 적용
-    ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+    
     UE_LOG(LogTemp, Warning, TEXT("🚀 GA_PlaceTrap: Ability completed"));
     EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
@@ -314,15 +303,4 @@ FVector UGA_PlaceTrap::CalculateSpawnLocation(AActor* OwnerActor)
     FVector ForwardLocation = OwnerActor->GetActorLocation() + OwnerActor->GetActorForwardVector() * 200.0f;
     ForwardLocation.Z = OwnerActor->GetActorLocation().Z;
     return ForwardLocation;
-}
-
-void UGA_PlaceTrap::ApplyTrapCooldown(const FGameplayAbilitySpecHandle Handle, 
-    const FGameplayAbilityActorInfo* ActorInfo, 
-    const FGameplayAbilityActivationInfo ActivationInfo)
-{
-    FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_TrapPlaceCooldown::StaticClass(), 1);
-    if (CooldownSpec.IsValid())
-    {
-        ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
-    }
 }

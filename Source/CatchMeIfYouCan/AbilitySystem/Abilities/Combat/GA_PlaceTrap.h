@@ -46,8 +46,4 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category = "Trap")
 	void ConsumeSpecificItemFromInventory(AActor* OwnerActor, ACYItemBase* SourceItem);
-
-	void ApplyTrapCooldown(const FGameplayAbilitySpecHandle Handle, 
-		const FGameplayAbilityActorInfo* ActorInfo, 
-		const FGameplayAbilityActivationInfo ActivationInfo);
 };

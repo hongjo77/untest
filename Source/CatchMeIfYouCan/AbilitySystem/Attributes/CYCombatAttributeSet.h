@@ -1,3 +1,5 @@
+// CYCombatAttributeSet.h - 강제 동기화 로직 제거, 단순화
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,6 +8,7 @@
 #include "CYCombatAttributeSet.generated.h"
 
 class UCharacterMovementComponent;
+class ACharacter;
 
 UCLASS()
 class CATCHMEIFYOUCAN_API UCYCombatAttributeSet : public UCYAttributeSet
@@ -38,6 +41,7 @@ public:
     virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 	
+	// ✅ 단순화된 MoveSpeed 처리
 	void HandleMoveSpeedChange();
 
 protected:
@@ -52,5 +56,10 @@ protected:
 
 private:
     void HandleHealthChange();
-    void ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed);
+    
+    // ✅ 강화된 Character 찾기
+    ACharacter* GetOwningCharacter() const;
+    
+    // ✅ 디버깅용 함수 추가
+    void LogOwnershipChain() const;
 };

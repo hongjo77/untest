@@ -1,3 +1,5 @@
+// CYCombatGameplayEffects.h - 단순화된 쿨다운
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -40,8 +42,8 @@ public:
 	UGE_WeaponDamage();
 };
 
-// 무기 공격 쿨다운
-UCLASS()
+// ✅ 무기 공격 쿨다운 - 단순화
+UCLASS(BlueprintType)
 class CATCHMEIFYOUCAN_API UGE_WeaponAttackCooldown : public UGameplayEffect
 {
 	GENERATED_BODY()
@@ -49,8 +51,8 @@ public:
 	UGE_WeaponAttackCooldown();
 };
 
-// 트랩 배치 쿨다운
-UCLASS()
+// ✅ 트랩 배치 쿨다운 - 단순화
+UCLASS(BlueprintType)
 class CATCHMEIFYOUCAN_API UGE_TrapPlaceCooldown : public UGameplayEffect
 {
 	GENERATED_BODY()
