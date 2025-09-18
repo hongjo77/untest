@@ -8,6 +8,7 @@
 #include "Player/CYPlayerState.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Input/CYItemInputTags.h"
 
 ACYPlayerCharacter::ACYPlayerCharacter(const FObjectInitializer& ObjectInitializer) 
 	:	Super(ObjectInitializer)
@@ -75,6 +76,19 @@ void ACYPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 	TArray<uint32> BindHandles;
 	CYInputComponent->BindAbilityActions(DefaultInputConfig, this, &ThisClass::Input_AbilityInputTagStarted, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, /*out*/ BindHandles);
+
+	// 아이템 입력 추가
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_Interact, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_Interact, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_Attack, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_Attack, false);
+	
+	// 인벤토리 슬롯
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot1, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot1, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot2, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot2, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot3, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot3, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot4, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot4, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot5, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot5, false);
+	CYInputComponent->BindNativeAction(DefaultInputConfig, CYGameplayTags::InputTag_UseSlot6, ETriggerEvent::Started, this, &ACYPlayerCharacter::Input_UseSlot6, false);
+
 }
 
 void ACYPlayerCharacter::Input_Move(const FInputActionValue& InputActionValue)
@@ -155,4 +169,42 @@ void ACYPlayerCharacter::OnRep_PlayerState()
 	}
 }
 
+void ACYPlayerCharacter::Input_Interact(const FInputActionValue& InputActionValue)
+{
+	InteractPressed();
+}
 
+void ACYPlayerCharacter::Input_Attack(const FInputActionValue& InputActionValue)
+{
+	AttackPressed();
+}
+
+void ACYPlayerCharacter::Input_UseSlot1(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(1000); // 무기 슬롯 1
+}
+
+void ACYPlayerCharacter::Input_UseSlot2(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(1001); // 무기 슬롯 2
+}
+
+void ACYPlayerCharacter::Input_UseSlot3(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(1002); // 무기 슬롯 3
+}
+
+void ACYPlayerCharacter::Input_UseSlot4(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(0); // 아이템 슬롯 1
+}
+
+void ACYPlayerCharacter::Input_UseSlot5(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(1); // 아이템 슬롯 2
+}
+
+void ACYPlayerCharacter::Input_UseSlot6(const FInputActionValue& InputActionValue)
+{
+	UseInventorySlot(2); // 아이템 슬롯 3
+}

@@ -10,6 +10,10 @@
 
 class UCYAbilitySet;
 class UCYAbilitySystemComponent;
+// Item 컴포넌트 추가 Start
+class UCYInventoryComponent;
+class UCYItemInteractionComponent;
+class UCYWeaponComponent;
 
 UCLASS(Abstract)
 class CATCHMEIFYOUCAN_API ACYCharacterBase : public ACharacter, public IAbilitySystemInterface
@@ -19,7 +23,27 @@ class CATCHMEIFYOUCAN_API ACYCharacterBase : public ACharacter, public IAbilityS
 public:
 	ACYCharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	// Item 컴포넌트 추가 Start
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "CY|Components")
+	UCYInventoryComponent* InventoryComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "CY|Components")
+	UCYItemInteractionComponent* ItemInteractionComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "CY|Components")
+	UCYWeaponComponent* WeaponComponent;
 	
+	// Item 입력 함수들 추가
+	UFUNCTION(BlueprintCallable, Category = "CY|Input")
+	void InteractPressed();
+
+	UFUNCTION(BlueprintCallable, Category = "CY|Input")
+	void AttackPressed();
+
+	UFUNCTION(BlueprintCallable, Category = "CY|Input")
+	void UseInventorySlot(int32 SlotIndex);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

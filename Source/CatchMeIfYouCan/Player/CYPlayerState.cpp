@@ -41,6 +41,17 @@ void ACYPlayerState::PostInitializeComponents()
 	
 }
 
+void ACYPlayerState::SetTeamRole(ECYTeamRole NewTeamRole)
+{
+	if (HasAuthority()) // 서버에서만 설정
+	{
+		TeamRole = NewTeamRole;
+		UE_LOG(LogCY, Warning, TEXT("Player %s team role set to: %s"), 
+			*GetPlayerName(),
+			TeamRole == ECYTeamRole::Cop ? TEXT("Cop") : TEXT("Robber"));
+	}
+}
+
 void ACYPlayerState::OnRep_TeamRole()
 {
 	// 팀 배정 시 처리 (UI 업데이트 등)

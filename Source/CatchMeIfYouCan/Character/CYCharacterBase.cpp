@@ -1,13 +1,19 @@
 #include "CYCharacterBase.h"
-
 #include "CYLogChannels.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
+#include "Components/Items/CYInventoryComponent.h"
+#include "Components/Items/CYItemInteractionComponent.h"
+#include "Components/Items/CYWeaponComponent.h"
 
 ACYCharacterBase::ACYCharacterBase(const FObjectInitializer& ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	
+	// Item 컴포넌트들 생성
+	InventoryComponent = CreateDefaultSubobject<UCYInventoryComponent>(TEXT("InventoryComponent"));
+	ItemInteractionComponent = CreateDefaultSubobject<UCYItemInteractionComponent>(TEXT("ItemInteractionComponent"));
+	WeaponComponent = CreateDefaultSubobject<UCYWeaponComponent>(TEXT("WeaponComponent"));
+
 }
 
 UAbilitySystemComponent* ACYCharacterBase::GetAbilitySystemComponent() const
@@ -79,4 +85,26 @@ void ACYCharacterBase::RemoveAbilitySets()
 	GrantedAbilitySetHandles.Empty();
 }
 
+void ACYCharacterBase::InteractPressed()
+{
+	if (ItemInteractionComponent)
+	{
+		ItemInteractionComponent->InteractWithNearbyItem();
+	}
+}
 
+void ACYCharacterBase::AttackPressed()
+{
+	if (WeaponComponent)
+	{
+		WeaponComponent->PerformAttack();
+	}
+}
+
+void ACYCharacterBase::UseInventorySlot(int32 SlotIndex)
+{
+	if (InventoryComponent)
+	{
+		InventoryComponent->UseItem(SlotIndex);
+	}
+}
