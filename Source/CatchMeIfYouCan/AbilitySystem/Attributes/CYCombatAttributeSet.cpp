@@ -46,26 +46,23 @@ void UCYCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribu
 
 void UCYCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
-    Super::PostGameplayEffectExecute(Data);
+	Super::PostGameplayEffectExecute(Data);
 
-    if (Data.EvaluatedData.Attribute == GetHealthAttribute())
-    {
-        HandleHealthChange();
-    }
-    else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
-    {
-        // ✅ PostGameplayEffectExecute에서 상세 로그
-        float OldValue = Data.EvaluatedData.Attribute.GetNumericValue(GetOwningAbilitySystemComponent());
-        float NewValue = GetMoveSpeed();
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		HandleHealthChange();
+	}
+	else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
+	{
+		// ✅ 서버에서 MoveSpeed 변경 처리
+		float OldValue = Data.EvaluatedData.Attribute.GetNumericValue(this);
+		float NewValue = GetMoveSpeed();
         
-        UE_LOG(LogTemp, Warning, TEXT("🏃 PostGameplayEffectExecute MoveSpeed changed: %f -> %f"), 
-               OldValue, NewValue);
-        UE_LOG(LogTemp, Warning, TEXT("🏃 Effect Source: %s"), 
-               Data.EffectSpec.GetContext().GetSourceObject() ? 
-               *Data.EffectSpec.GetContext().GetSourceObject()->GetName() : TEXT("Unknown"));
+		UE_LOG(LogTemp, Warning, TEXT("🏃 [SERVER] PostGameplayEffectExecute MoveSpeed changed: %f -> %f"), 
+			   OldValue, NewValue);
         
-        HandleMoveSpeedChange();
-    }
+		HandleMoveSpeedChange();
+	}
 }
 
 void UCYCombatAttributeSet::HandleHealthChange()
@@ -84,67 +81,20 @@ void UCYCombatAttributeSet::HandleHealthChange()
 
 void UCYCombatAttributeSet::HandleMoveSpeedChange()
 {
-    float NewMoveSpeed = GetMoveSpeed();
+	float NewMoveSpeed = GetMoveSpeed();
     
-    UE_LOG(LogTemp, Warning, TEXT("🏃 HandleMoveSpeedChange called with speed: %f"), NewMoveSpeed);
+	UE_LOG(LogTemp, Warning, TEXT("🏃 HandleMoveSpeedChange called with speed: %f"), NewMoveSpeed);
     
-    // ✅ 강화된 Character 찾기 로직
-    ACharacter* Character = GetOwningCharacter();
-    if (!Character)
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ HandleMoveSpeedChange: No Character found"));
-        LogOwnershipChain(); // 디버깅용
-        return;
-    }
+	ACharacter* Character = GetOwningCharacter();
+	if (!Character)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ HandleMoveSpeedChange: No Character found"));
+		LogOwnershipChain();
+		return;
+	}
 
-    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
-    if (!MovementComp)
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ HandleMoveSpeedChange: No MovementComponent found"));
-        return;
-    }
-    
-    // ✅ 현재 값과 비교
-    float CurrentMaxWalkSpeed = MovementComp->MaxWalkSpeed;
-    UE_LOG(LogTemp, Warning, TEXT("🏃 Current MaxWalkSpeed: %f, New MoveSpeed: %f"), 
-           CurrentMaxWalkSpeed, NewMoveSpeed);
-    
-    // ✅ 값 적용
-    MovementComp->MaxWalkSpeed = NewMoveSpeed;
-    
-    // ✅ 추가 보장 조치들
-    if (NewMoveSpeed <= 0.0f)
-    {
-        // 완전 정지인 경우
-        MovementComp->StopMovementImmediately();
-        MovementComp->MaxAcceleration = 0.0f;
-        MovementComp->JumpZVelocity = 0.0f;
-        UE_LOG(LogTemp, Warning, TEXT("❄️ Complete immobilization applied"));
-    }
-    else if (NewMoveSpeed < 100.0f)
-    {
-        // 매우 느린 경우
-        MovementComp->MaxAcceleration = 200.0f;
-        MovementComp->JumpZVelocity = 0.0f;
-        UE_LOG(LogTemp, Warning, TEXT("🧊 Heavy slow applied"));
-    }
-    else
-    {
-        // 정상 속도
-        MovementComp->MaxAcceleration = 2048.0f;
-        MovementComp->JumpZVelocity = 600.0f;
-    }
-    
-    // ✅ 네트워크 업데이트 강제 실행
-    if (Character->HasAuthority())
-    {
-        Character->ForceNetUpdate();
-        UE_LOG(LogTemp, Warning, TEXT("🏃 Server: Forced network update"));
-    }
-    
-    // ✅ 적용 후 확인
-    UE_LOG(LogTemp, Warning, TEXT("✅ MoveSpeed applied: %s MaxWalkSpeed = %f"), 
-           *Character->GetName(), MovementComp->MaxWalkSpeed);
+	// ✅ 핵심: MovementComponent에 직접 적용
+	ApplyMoveSpeedToMovementComponent(NewMoveSpeed);
 }
 
 // ✅ 강화된 Character 찾기 로직
@@ -233,16 +183,59 @@ void UCYCombatAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMax
 
 void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMoveSpeed)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
     
-    UE_LOG(LogTemp, Warning, TEXT("🏃 OnRep_MoveSpeed: %f -> %f"), 
-           OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
+	float NewMoveSpeed = GetMoveSpeed();
+	UE_LOG(LogTemp, Warning, TEXT("🏃 [CLIENT] OnRep_MoveSpeed: %f -> %f"), 
+		   OldMoveSpeed.GetCurrentValue(), NewMoveSpeed);
     
-    // ✅ 클라이언트에서도 적용
-    HandleMoveSpeedChange();
+	// ✅ 클라이언트에서도 동일하게 처리
+	HandleMoveSpeedChange();
 }
 
 void UCYCombatAttributeSet::OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower)
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, AttackPower, OldAttackPower);
+}
+
+void UCYCombatAttributeSet::ApplyMoveSpeedToMovementComponent(float NewMoveSpeed)
+{
+	ACharacter* Character = GetOwningCharacter();
+	if (!Character) return;
+
+	UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
+	if (!MovementComp) return;
+    
+	UE_LOG(LogTemp, Warning, TEXT("🏃 Applying speed %f to %s"), NewMoveSpeed, *Character->GetName());
+    
+	// ✅ 직접 적용
+	MovementComp->MaxWalkSpeed = NewMoveSpeed;
+    
+	if (NewMoveSpeed <= 0.0f)
+	{
+		// 완전 정지
+		MovementComp->StopMovementImmediately();
+		MovementComp->MaxAcceleration = 0.0f;
+		MovementComp->JumpZVelocity = 0.0f;
+		UE_LOG(LogTemp, Warning, TEXT("❄️ Complete freeze applied"));
+	}
+	else if (NewMoveSpeed < 100.0f)
+	{
+		// 슬로우
+		MovementComp->MaxAcceleration = 200.0f;
+		MovementComp->JumpZVelocity = 0.0f;
+		UE_LOG(LogTemp, Warning, TEXT("🧊 Slow effect applied"));
+	}
+	else
+	{
+		// 정상 속도
+		MovementComp->MaxAcceleration = 2048.0f;
+		MovementComp->JumpZVelocity = 600.0f;
+		UE_LOG(LogTemp, Warning, TEXT("🏃 Normal speed applied"));
+	}
+    
+	// ✅ 강제 업데이트
+	MovementComp->UpdateComponentVelocity();
+    
+	UE_LOG(LogTemp, Warning, TEXT("✅ MoveSpeed successfully applied: %f"), MovementComp->MaxWalkSpeed);
 }

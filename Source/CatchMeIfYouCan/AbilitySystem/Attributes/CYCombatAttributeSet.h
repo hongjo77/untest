@@ -1,4 +1,4 @@
-// CYCombatAttributeSet.h - 강제 동기화 로직 제거, 단순화
+// CYCombatAttributeSet.h - OnRep 강화 방식
 
 #pragma once
 
@@ -18,7 +18,6 @@ class CATCHMEIFYOUCAN_API UCYCombatAttributeSet : public UCYAttributeSet
 public:
     UCYCombatAttributeSet();
 
-    // Health (VitalSet과 중복이지만 Combat 전용)
     UPROPERTY(BlueprintReadOnly, Category = "Combat", ReplicatedUsing = OnRep_Health)
     FGameplayAttributeData Health;
     ATTRIBUTE_ACCESSORS(UCYCombatAttributeSet, Health)
@@ -27,12 +26,10 @@ public:
     FGameplayAttributeData MaxHealth;
     ATTRIBUTE_ACCESSORS(UCYCombatAttributeSet, MaxHealth)
 
-    // Movement
     UPROPERTY(BlueprintReadOnly, Category = "Combat", ReplicatedUsing = OnRep_MoveSpeed)
     FGameplayAttributeData MoveSpeed;
     ATTRIBUTE_ACCESSORS(UCYCombatAttributeSet, MoveSpeed)
 
-    // Damage
     UPROPERTY(BlueprintReadOnly, Category = "Combat", ReplicatedUsing = OnRep_AttackPower)
     FGameplayAttributeData AttackPower;
     ATTRIBUTE_ACCESSORS(UCYCombatAttributeSet, AttackPower)
@@ -41,7 +38,6 @@ public:
     virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 	
-	// ✅ 단순화된 MoveSpeed 처리
 	void HandleMoveSpeedChange();
 
 protected:
@@ -56,10 +52,9 @@ protected:
 
 private:
     void HandleHealthChange();
-    
-    // ✅ 강화된 Character 찾기
     ACharacter* GetOwningCharacter() const;
-    
-    // ✅ 디버깅용 함수 추가
     void LogOwnershipChain() const;
+    
+    // ✅ 핵심 함수: 서버/클라이언트 모두에서 MovementComponent 직접 적용
+    void ApplyMoveSpeedToMovementComponent(float NewMoveSpeed);
 };

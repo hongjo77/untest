@@ -51,16 +51,36 @@ void ACYCharacterBase::InitializeAbilitySets()
 	RemoveAbilitySets();
 
 	UCYAbilitySystemComponent* CYASC = CYAbilitySystemComponent.Get();
+
+	// CombatAttributeSet 보장
+	const UCYCombatAttributeSet* ExistingSet = CYASC->GetSet<UCYCombatAttributeSet>();
+	if (!ExistingSet)
+	{
+		UE_LOG(LogCY, Warning, TEXT("Adding UCYCombatAttributeSet to %s"), *GetName());
+		UCYCombatAttributeSet* NewCombatSet = NewObject<UCYCombatAttributeSet>(this);
+		CYASC->AddAttributeSetSubobject(NewCombatSet);
+	}
 	
-	// 기본적으로 부여할 AbilitySet 설정
+	// 기본 AbilitySet 부여
 	for (UCYAbilitySet* AbilitySet : DefaultAbilitySets)
 	{
 		if (IsValid(AbilitySet))
 		{
-			// 해당 시점에서 AbilitySet을 부여하고 부여된 Ability들의 Handle을 GrantedAbilitySetHandles에 저장
 			FCYAbilitySet_GrantedHandles& GrantedHandles = GrantedAbilitySetHandles.AddDefaulted_GetRef();
 			AbilitySet->GiveToAbilitySystem(CYASC, &GrantedHandles);
 		}
+	}
+	
+	// 검증
+	const UCYCombatAttributeSet* FinalCheck = CYASC->GetSet<UCYCombatAttributeSet>();
+	if (FinalCheck)
+	{
+		UE_LOG(LogCY, Warning, TEXT("✅ %s has UCYCombatAttributeSet (MoveSpeed: %f)"), 
+			   *GetName(), FinalCheck->GetMoveSpeed());
+	}
+	else
+	{
+		UE_LOG(LogCY, Error, TEXT("❌ %s still missing UCYCombatAttributeSet!"), *GetName());
 	}
 }
 

@@ -38,5 +38,4 @@ protected:
 
 private:
 	bool IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const;
-	bool IsAnotherWeaponAttackActive(const FGameplayAbilityActorInfo* ActorInfo) const;
 };

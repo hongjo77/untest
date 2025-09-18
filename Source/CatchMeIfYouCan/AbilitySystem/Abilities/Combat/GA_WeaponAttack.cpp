@@ -32,88 +32,74 @@ UGA_WeaponAttack::UGA_WeaponAttack()
 }
 
 bool UGA_WeaponAttack::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
-    const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
+	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
-    // ✅ 쿨다운 먼저 체크 - 빠른 리턴
-    if (IsOnCooldown(ActorInfo))
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: On cooldown - blocked"));
-        return false;
-    }
+	// ✅ 쿨다운 먼저 체크 - 빠른 리턴
+	if (IsOnCooldown(ActorInfo))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: On cooldown - blocked"));
+		return false;
+	}
 
-    // ✅ 이미 공격 중인지 체크
-    if (IsAnotherWeaponAttackActive(ActorInfo))
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: Already attacking - blocked"));
-        return false;
-    }
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: Base CanActivateAbility failed"));
+		return false;
+	}
 
-    if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: Base CanActivateAbility failed"));
-        return false;
-    }
-
-    return true;
+	return true;
 }
 
 void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
 {
-    UE_LOG(LogTemp, Warning, TEXT("⚔️ WeaponAttack: ActivateAbility START"));
+	UE_LOG(LogTemp, Warning, TEXT("⚔️ WeaponAttack: ActivateAbility START"));
 
-    if (!HasAuthorityOrPredictionKey(ActorInfo, &ActivationInfo))
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ WeaponAttack: No authority or prediction key"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-        return;
-    }
+	if (!HasAuthorityOrPredictionKey(ActorInfo, &ActivationInfo))
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ WeaponAttack: No authority or prediction key"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
 
-    // ✅ 마지막 안전 장치 - 활성화 시점에서 재확인
-    if (IsOnCooldown(ActorInfo))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ WeaponAttack: On cooldown during activation - aborting"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-        return;
-    }
+	// ✅ 최종 쿨다운 체크만 유지 (다른 체크 제거)
+	if (IsOnCooldown(ActorInfo))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("⚠️ WeaponAttack: On cooldown during activation - aborting"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
 
-    if (IsAnotherWeaponAttackActive(ActorInfo))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ WeaponAttack: Another attack active during activation - aborting"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-        return;
-    }
+	// ✅ 즉시 쿨다운 적용 (중복 실행 차단)
+	ApplyWeaponCooldown(Handle, ActorInfo, ActivationInfo);
 
-    // ✅ 즉시 쿿다운 적용 (중복 실행 완전 차단)
-    ApplyWeaponCooldown(Handle, ActorInfo, ActivationInfo);
+	// ✅ Cost 커밋
+	if (!CommitAbilityCost(Handle, ActorInfo, ActivationInfo))
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ WeaponAttack: Failed to commit ability cost"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
 
-    // ✅ Cost 커밋 (Cost가 있다면)
-    if (!CommitAbilityCost(Handle, ActorInfo, ActivationInfo))
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ WeaponAttack: Failed to commit ability cost"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-        return;
-    }
-
-    // ✅ 공격 수행
-    bool bAttackSuccess = PerformAttack();
+	// ✅ 공격 수행
+	bool bAttackSuccess = PerformAttack();
     
-    if (bAttackSuccess)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("✅ WeaponAttack: Attack HIT target"));
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("🎯 WeaponAttack: Attack missed (no target)"));
-    }
+	if (bAttackSuccess)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("✅ WeaponAttack: Attack HIT target"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("🎯 WeaponAttack: Attack missed (no target)"));
+	}
 
-    UE_LOG(LogTemp, Warning, TEXT("⚔️ WeaponAttack: ActivateAbility END"));
+	UE_LOG(LogTemp, Warning, TEXT("⚔️ WeaponAttack: ActivateAbility END"));
     
-    // ✅ 어빌리티 종료
-    EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+	// ✅ 어빌리티 종료
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
 
 bool UGA_WeaponAttack::PerformAttack()
@@ -161,24 +147,6 @@ bool UGA_WeaponAttack::IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) 
     }
     
     return bHasCooldownTag;
-}
-
-bool UGA_WeaponAttack::IsAnotherWeaponAttackActive(const FGameplayAbilityActorInfo* ActorInfo) const
-{
-    if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid())
-    {
-        return false;
-    }
-
-    // ✅ 이미 Attacking 상태인지 확인
-    bool bHasAttackingTag = ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::State_Combat_Attacking);
-    
-    if (bHasAttackingTag)
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("🚫 WeaponAttack: Already in attacking state"));
-    }
-    
-    return bHasAttackingTag;
 }
 
 void UGA_WeaponAttack::ProcessHitTarget(const FHitResult& HitResult)

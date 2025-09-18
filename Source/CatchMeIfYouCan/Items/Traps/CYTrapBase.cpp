@@ -339,70 +339,53 @@ void ACYTrapBase::ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target)
 
 void ACYTrapBase::ApplyTrapEffects(ACYPlayerCharacter* Target)
 {
-    if (!Target) 
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target is null"));
-        return;
-    }
+	if (!Target) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target is null"));
+		return;
+	}
 
-    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
-    if (!TargetASC) 
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target has no AbilitySystemComponent"));
-        return;
-    }
+	UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
+	if (!TargetASC) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ ApplyTrapEffects: Target has no AbilitySystemComponent"));
+		return;
+	}
 
-    UE_LOG(LogTemp, Warning, TEXT("🎯 Applying trap effects to %s"), *Target->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("🎯 Applying trap effects to %s"), *Target->GetName());
 
-    // ✅ 트랩 타입별 효과 적용
-    FString TrapTypeName = UCYTrapFactory::GetTrapTypeName(TrapType);
-    UE_LOG(LogTemp, Warning, TEXT("🎯 Applying %s effects"), *TrapTypeName);
+	// ✅ TrapData의 GameplayEffects 적용
+	int32 EffectCount = 0;
+	for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
+	{
+		if (EffectClass)
+		{
+			FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
+			if (Handle.IsValid())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("✅ Applied TrapData effect: %s"), *EffectClass->GetName());
+				EffectCount++;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("❌ Failed to apply TrapData effect: %s"), *EffectClass->GetName());
+			}
+		}
+	}
 
-    // TrapData의 GameplayEffects 적용
-    int32 EffectCount = 0;
-    for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
-    {
-        if (EffectClass)
-        {
-            FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
-            if (Handle.IsValid())
-            {
-                UE_LOG(LogTemp, Warning, TEXT("✅ Applied TrapData effect [%d]: %s"), 
-                       EffectCount, *EffectClass->GetName());
-                EffectCount++;
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("❌ Failed to apply TrapData effect: %s"), *EffectClass->GetName());
-            }
-        }
-    }
+	// ✅ 백업: AttributeSet 방식이 실패한 경우 직접 제어
+	if (EffectCount == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("⚠️ No GameplayEffects applied, using direct movement control"));
+		ApplyDirectMovementControl(Target);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("✅ Applied %d GameplayEffects successfully"), EffectCount);
+	}
 
-    // ItemEffects 적용
-    for (TSubclassOf<UGameplayEffect> EffectClass : ItemEffects)
-    {
-        if (EffectClass)
-        {
-            FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
-            if (Handle.IsValid())
-            {
-                UE_LOG(LogTemp, Warning, TEXT("✅ Applied ItemEffect [%d]: %s"), 
-                       EffectCount, *EffectClass->GetName());
-                EffectCount++;
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("❌ Failed to apply ItemEffect: %s"), *EffectClass->GetName());
-            }
-        }
-    }
-
-    // ✅ 강제 동기화 로직 완전 제거 - GAS가 자동으로 처리
-    // 커스텀 효과 적용
-    ApplyCustomEffects(Target);
-
-    UE_LOG(LogTemp, Warning, TEXT("✅ Applied %d total trap effects to %s"), 
-           EffectCount, *Target->GetName());
+	// 커스텀 효과 적용
+	ApplyCustomEffects(Target);
 }
 
 FActiveGameplayEffectHandle ACYTrapBase::ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass)
@@ -430,4 +413,130 @@ FActiveGameplayEffectHandle ACYTrapBase::ApplySingleEffect(UAbilitySystemCompone
 	}
 
 	return FActiveGameplayEffectHandle();
+}
+
+bool ACYTrapBase::EnsureTargetHasCombatAttributeSet(ACYPlayerCharacter* Target)
+{
+    if (!Target) return false;
+
+    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
+    if (!TargetASC) return false;
+
+    // ✅ CombatAttributeSet 존재 확인
+    const UCYCombatAttributeSet* CombatAttrSet = TargetASC->GetSet<UCYCombatAttributeSet>();
+    if (!CombatAttrSet)
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ Target %s does not have UCYCombatAttributeSet"), 
+               *Target->GetName());
+        
+        // ✅ AttributeSet이 없으면 동적으로 추가 시도
+        UCYCombatAttributeSet* NewAttrSet = NewObject<UCYCombatAttributeSet>(TargetASC->GetOwner());
+        if (NewAttrSet)
+        {
+            TargetASC->AddAttributeSetSubobject(NewAttrSet);
+            UE_LOG(LogTemp, Warning, TEXT("✅ Added UCYCombatAttributeSet to %s"), *Target->GetName());
+            return true;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ Failed to create UCYCombatAttributeSet for %s"), 
+                   *Target->GetName());
+            return false;
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("✅ Target %s has UCYCombatAttributeSet"), *Target->GetName());
+    return true;
+}
+
+void ACYTrapBase::LogCurrentMoveSpeed(ACYPlayerCharacter* Target)
+{
+    if (!Target) return;
+
+    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
+    if (!TargetASC) return;
+
+    const UCYCombatAttributeSet* CombatAttrSet = TargetASC->GetSet<UCYCombatAttributeSet>();
+    if (CombatAttrSet)
+    {
+        float CurrentMoveSpeed = CombatAttrSet->GetMoveSpeed();
+        UE_LOG(LogTemp, Warning, TEXT("🏃 Current AttributeSet MoveSpeed: %f"), CurrentMoveSpeed);
+    }
+
+    // MovementComponent 확인
+    if (ACharacter* Character = Cast<ACharacter>(Target))
+    {
+        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+        {
+            float CurrentMaxWalkSpeed = MovementComp->MaxWalkSpeed;
+            UE_LOG(LogTemp, Warning, TEXT("🏃 Current MovementComponent MaxWalkSpeed: %f"), 
+                   CurrentMaxWalkSpeed);
+        }
+    }
+}
+
+void ACYTrapBase::ApplyDirectMovementControl(ACYPlayerCharacter* Target)
+{
+	if (!Target) return;
+
+	ACharacter* Character = Cast<ACharacter>(Target);
+	if (!Character) return;
+
+	UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
+	if (!MovementComp) return;
+
+	float TargetSpeed = 0.0f;
+	float Duration = 3.0f;
+	FString EffectName = TEXT("Unknown");
+
+	// ✅ 트랩 타입별 속도 설정
+	switch (TrapType)
+	{
+	case ETrapType::Freeze:
+		TargetSpeed = 0.0f;
+		Duration = 3.0f;
+		EffectName = TEXT("Freeze");
+		break;
+            
+	case ETrapType::Slow:
+		TargetSpeed = 100.0f;
+		Duration = 5.0f;
+		EffectName = TEXT("Slow");
+		break;
+            
+	default:
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("🎯 BACKUP: Applying direct %s effect"), *EffectName);
+
+	// ✅ 즉시 적용
+	MovementComp->MaxWalkSpeed = TargetSpeed;
+    
+	if (TargetSpeed <= 0.0f)
+	{
+		MovementComp->StopMovementImmediately();
+		MovementComp->MaxAcceleration = 0.0f;
+		MovementComp->JumpZVelocity = 0.0f;
+	}
+	else
+	{
+		MovementComp->MaxAcceleration = 200.0f;
+		MovementComp->JumpZVelocity = 0.0f;
+	}
+
+	// ✅ 타이머로 복원
+	FTimerHandle RestoreTimer;
+	GetWorld()->GetTimerManager().SetTimer(RestoreTimer, [MovementComp]()
+	{
+		if (MovementComp)
+		{
+			MovementComp->MaxWalkSpeed = 600.0f;
+			MovementComp->MaxAcceleration = 2048.0f;
+			MovementComp->JumpZVelocity = 600.0f;
+			UE_LOG(LogTemp, Warning, TEXT("🏃 BACKUP: Restored normal movement"));
+		}
+	}, Duration, false);
+
+	UE_LOG(LogTemp, Warning, TEXT("✅ BACKUP: Applied %s effect"), *EffectName);
 }

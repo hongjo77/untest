@@ -1,4 +1,4 @@
-// CYTrapBase.h - 개선된 헤더 파일
+// CYTrapBase.h - 트랩 효과 개선 함수 추가
 #pragma once
 
 #include "CoreMinimal.h"
@@ -34,7 +34,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Trap")
     void ConvertToPlayerPlacedTrap(AActor* PlacingPlayer);
 
-    // ✅ 리플리케이션 추가
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Data", Replicated)
     FTrapData TrapData;
 
@@ -50,7 +49,7 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trap Settings")
     float TrapLifetime = 60.0f;
 
-    // ✅ 이벤트 함수들 (하위 클래스에서 오버라이드)
+    // 이벤트 함수들 (하위 클래스에서 오버라이드)
     UFUNCTION(BlueprintNativeEvent, Category = "Trap Events")
     void OnTrapSpawned();
     virtual void OnTrapSpawned_Implementation();
@@ -67,7 +66,7 @@ public:
     void OnTrapDestroyed();
     virtual void OnTrapDestroyed_Implementation();
 
-    // ✅ 멀티캐스트 함수들
+    // 멀티캐스트 함수들
     UFUNCTION(NetMulticast, Reliable, Category = "Trap Events")
     void MulticastOnTrapTriggered(ACYPlayerCharacter* Target);
 
@@ -82,7 +81,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-    // ✅ 시각적 설정 함수들 (하위 클래스에서 오버라이드 필수)
+    // 시각적 설정 함수들 (하위 클래스에서 오버라이드 필수)
     UFUNCTION(BlueprintCallable, Category = "Trap Initialization")
     void InitializeTrapVisuals();
 
@@ -99,6 +98,16 @@ protected:
     UFUNCTION(BlueprintNativeEvent, Category = "Trap Effects")
     void ApplyCustomEffects(ACYPlayerCharacter* Target);
     virtual void ApplyCustomEffects_Implementation(ACYPlayerCharacter* Target);
+
+    // ✅ 새로 추가된 트랩 효과 관련 함수들
+    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
+    bool EnsureTargetHasCombatAttributeSet(ACYPlayerCharacter* Target);
+
+    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
+    void LogCurrentMoveSpeed(ACYPlayerCharacter* Target);
+
+    UFUNCTION(BlueprintCallable, Category = "Trap Effects")
+    void ApplyDirectMovementControl(ACYPlayerCharacter* Target);
 
     // 오버랩 이벤트 핸들러들
     UFUNCTION()
@@ -123,7 +132,7 @@ protected:
     void SetupTrapForCurrentState();
 
     // 개별 효과 적용
-	FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
+    FActiveGameplayEffectHandle ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass);
 
     // 타이머 설정
     void SetupTrapTimers();

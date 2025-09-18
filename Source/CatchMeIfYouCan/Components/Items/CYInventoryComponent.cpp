@@ -173,39 +173,38 @@ bool UCYInventoryComponent::UseItem(int32 SlotIndex)
 
 bool UCYInventoryComponent::UseTrapItemDirect(ACYItemBase* Item, int32 LocalIndex)
 {
-    if (!Item) return false;
+	if (!Item) return false;
 
-    UAbilitySystemComponent* ASC = GetOwnerASC();
-    if (!ASC) 
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ No AbilitySystemComponent found"));
-        return false;
-    }
+	UAbilitySystemComponent* ASC = GetOwnerASC();
+	if (!ASC) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ No AbilitySystemComponent found"));
+		return false;
+	}
 
-    UCYAbilitySystemComponent* CyASC = Cast<UCYAbilitySystemComponent>(ASC);
-    if (!CyASC)
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ ASC is not UCYAbilitySystemComponent"));
-        return false;
-    }
+	UCYAbilitySystemComponent* CyASC = Cast<UCYAbilitySystemComponent>(ASC);
+	if (!CyASC)
+	{
+		UE_LOG(LogTemp, Error, TEXT("❌ ASC is not UCYAbilitySystemComponent"));
+		return false;
+	}
     
-    // ✅ 쿨다운 체크
-    FGameplayTagContainer CooldownTags;
-    CooldownTags.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Trap.Place"));
-    if (CyASC->HasAnyMatchingGameplayTags(CooldownTags))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⏰ Trap placement on cooldown"));
-        return false;
-    }
+	// ✅ 수정: 올바른 태그 사용
+	FGameplayTagContainer CooldownTags;
+	CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_TrapPlace); // 올바른 태그
+	if (CyASC->HasAnyMatchingGameplayTags(CooldownTags))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("⏰ Trap placement on cooldown"));
+		return false;
+	}
 
-    // ✅ 특정 아이템을 SourceObject로 전달하여 어빌리티 실행
+	// ✅ 특정 아이템을 SourceObject로 전달하여 어빌리티 실행
 	bool bSuccess = CyASC->TryActivateAbilityByTagWithSource(CYGameplayTags::Ability_Combat_PlaceTrap, Item);
     
+	UE_LOG(LogTemp, Warning, TEXT("🎯 TrapPlace ability result: %s (SourceItem: %s)"), 
+		   bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"), *Item->ItemName.ToString());
     
-    UE_LOG(LogTemp, Warning, TEXT("🎯 TrapPlace ability result: %s (SourceItem: %s)"), 
-           bSuccess ? TEXT("SUCCESS") : TEXT("FAILED"), *Item->ItemName.ToString());
-    
-    return bSuccess;
+	return bSuccess;
 }
 
 void UCYInventoryComponent::ServerUseItem_Implementation(int32 SlotIndex)
@@ -214,8 +213,6 @@ void UCYInventoryComponent::ServerUseItem_Implementation(int32 SlotIndex)
     bool bResult = UseItem(SlotIndex);
     UE_LOG(LogTemp, Warning, TEXT("🌐 ServerUseItem result: %s"), bResult ? TEXT("SUCCESS") : TEXT("FAILED"));
 }
-
-// ============ 기존 핵심 로직 (유지) ============
 
 bool UCYInventoryComponent::AddWeapon(ACYItemBase* Weapon)
 {

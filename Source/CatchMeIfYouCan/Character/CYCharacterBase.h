@@ -14,6 +14,7 @@ class UCYAbilitySystemComponent;
 class UCYInventoryComponent;
 class UCYItemInteractionComponent;
 class UCYWeaponComponent;
+class UCYCombatAttributeSet;
 
 UCLASS(Abstract)
 class CATCHMEIFYOUCAN_API ACYCharacterBase : public ACharacter, public IAbilitySystemInterface

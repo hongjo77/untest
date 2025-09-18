@@ -118,6 +118,9 @@ void UCYAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 	// 정적 변수로 선언하여 매 프레임마다 메모리 할당을 피함
 	static TArray<FGameplayAbilitySpecHandle> AbilitiesToActivate;
 	AbilitiesToActivate.Reset();
+
+	// 중복 방지를 위한 Set 사용
+	TSet<FGameplayAbilitySpecHandle> UniqueAbilitiesToActivate;
 	
 	for (const FGameplayAbilitySpecHandle& SpecHandle : InputHeldSpecHandles)
 	{
