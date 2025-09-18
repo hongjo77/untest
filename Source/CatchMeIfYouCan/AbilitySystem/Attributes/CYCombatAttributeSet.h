@@ -1,4 +1,4 @@
-// CYCombatAttributeSet.h - OnRep 강화 방식
+// CYCombatAttributeSet.h - testun 방식으로 단순화
 
 #pragma once
 
@@ -37,8 +37,6 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
-	
-	void HandleMoveSpeedChange();
 
 protected:
     UFUNCTION()
@@ -52,9 +50,8 @@ protected:
 
 private:
     void HandleHealthChange();
-    ACharacter* GetOwningCharacter() const;
-    void LogOwnershipChain() const;
+    void HandleMoveSpeedChange();
     
-    // ✅ 핵심 함수: 서버/클라이언트 모두에서 MovementComponent 직접 적용
-    void ApplyMoveSpeedToMovementComponent(float NewMoveSpeed);
+    // ✅ testun 방식: 단순한 MovementComponent 제어
+    void ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed);
 };

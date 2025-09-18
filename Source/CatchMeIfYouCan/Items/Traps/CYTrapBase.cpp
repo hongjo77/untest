@@ -1,14 +1,12 @@
-// CYTrapBase.cpp - 강화된 백업 로직으로 트랩 효과 보장
+// CYTrapBase.cpp - testun 방식으로 단순화
 
-#include "CYTrapBase.h"
+#include "Items/Traps/CYTrapBase.h"
 #include "AbilitySystemComponent.h"
 #include "TimerManager.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
-#include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Character/CYPlayerCharacter.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
@@ -16,7 +14,7 @@ ACYTrapBase::ACYTrapBase()
 {
     ItemName = FText::FromString("Base Trap");
     ItemDescription = FText::FromString("A base trap class");
-	ItemTag = CYGameplayTags::Item_Trap;
+    ItemTag = CYGameplayTags::Item_Trap;
 
     MaxStackCount = 5;
     ItemCount = 1;
@@ -181,154 +179,55 @@ void ACYTrapBase::OnTriggerSphereOverlap(UPrimitiveComponent* OverlappedComponen
 
 void ACYTrapBase::ApplyTrapEffects(ACYPlayerCharacter* Target)
 {
-	if (!Target) return;
+    if (!Target) return;
 
-	UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
-	if (!TargetASC) return;
+    UAbilitySystemComponent* TargetASC = Target->GetAbilitySystemComponent();
+    if (!TargetASC) return;
 
-	// ✅ GameplayEffect 적용 시도
-	bool bGameplayEffectSuccessful = false;
-	for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
-	{
-		if (EffectClass)
-		{
-			FActiveGameplayEffectHandle Handle = ApplySingleEffect(TargetASC, EffectClass);
-			if (Handle.IsValid())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("✅ Applied GameplayEffect: %s"), *EffectClass->GetName());
-				bGameplayEffectSuccessful = true;
-				
-				// ✅ 효과 적용 확인을 위한 타이머 설정
-				GetWorld()->GetTimerManager().SetTimerForNextTick([this, Target, TargetASC]()
-				{
-					VerifyEffectApplication(Target, TargetASC);
-				});
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("❌ Failed to apply GameplayEffect: %s"), *EffectClass->GetName());
-			}
-		}
-	}
+    UE_LOG(LogTemp, Warning, TEXT("🎯 Applying trap effects to %s"), *Target->GetName());
 
-	// ✅ 백업 로직: GameplayEffect가 실패하거나 제대로 적용되지 않으면 직접 제어
-	if (!bGameplayEffectSuccessful)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("🔧 GameplayEffect failed, using direct movement control"));
-		ApplyDirectMovementControl(Target);
-	}
+    // ✅ testun 방식: 단순한 GameplayEffect 적용
+    for (TSubclassOf<UGameplayEffect> EffectClass : TrapData.GameplayEffects)
+    {
+        if (EffectClass)
+        {
+            ApplySingleEffect(TargetASC, EffectClass);
+        }
+    }
 
-	ApplyCustomEffects(Target);
-}
+    for (TSubclassOf<UGameplayEffect> EffectClass : ItemEffects)
+    {
+        if (EffectClass)
+        {
+            ApplySingleEffect(TargetASC, EffectClass);
+        }
+    }
 
-void ACYTrapBase::VerifyEffectApplication(ACYPlayerCharacter* Target, UAbilitySystemComponent* TargetASC)
-{
-	if (!Target || !TargetASC) return;
-
-	// ✅ AttributeSet에서 실제 MoveSpeed 확인
-	const UCYCombatAttributeSet* CombatAttr = TargetASC->GetSet<UCYCombatAttributeSet>();
-	if (CombatAttr)
-	{
-		float CurrentSpeed = CombatAttr->GetMoveSpeed();
-		UE_LOG(LogTemp, Warning, TEXT("🔍 Verifying effect: Current MoveSpeed = %f"), CurrentSpeed);
-		
-		// ✅ 기대하는 속도와 다르면 직접 제어 적용
-		float ExpectedSpeed = (TrapType == ETrapType::Freeze) ? 0.0f : 50.0f;
-		if (FMath::Abs(CurrentSpeed - ExpectedSpeed) > 10.0f) // 오차 허용
-		{
-			UE_LOG(LogTemp, Warning, TEXT("🔧 GameplayEffect verification failed, applying direct control"));
-			ApplyDirectMovementControl(Target);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("✅ GameplayEffect verified successfully"));
-		}
-	}
-}
-
-void ACYTrapBase::ApplyDirectMovementControl(ACYPlayerCharacter* Target)
-{
-	if (!Target) return;
-
-	ACharacter* Character = Cast<ACharacter>(Target);
-	if (!Character) return;
-
-	UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
-	if (!MovementComp) return;
-
-	float TargetSpeed = 600.0f;
-	float Duration = 3.0f;
-	
-	switch (TrapType)
-	{
-	case ETrapType::Freeze:
-		TargetSpeed = 0.0f;
-		Duration = 3.0f;
-		UE_LOG(LogTemp, Warning, TEXT("🧊 Direct Control: FREEZE - Speed: %f for %f seconds"), TargetSpeed, Duration);
-		break;
-	case ETrapType::Slow:
-		TargetSpeed = 50.0f;
-		Duration = 5.0f;
-		UE_LOG(LogTemp, Warning, TEXT("🐌 Direct Control: SLOW - Speed: %f for %f seconds"), TargetSpeed, Duration);
-		break;
-	default:
-		UE_LOG(LogTemp, Warning, TEXT("⚠️ Unknown trap type, skipping direct control"));
-		return;
-	}
-	
-	// ✅ 즉시 적용
-	MovementComp->MaxWalkSpeed = TargetSpeed;
-	
-	if (TargetSpeed <= 0.0f)
-	{
-		MovementComp->StopMovementImmediately();
-		MovementComp->MaxAcceleration = 0.0f;
-		MovementComp->JumpZVelocity = 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("❄️ Direct Control: Complete freeze applied"));
-	}
-	else if (TargetSpeed < 100.0f)
-	{
-		MovementComp->MaxAcceleration = 200.0f;
-		MovementComp->JumpZVelocity = 200.0f; // 점프력도 감소
-		UE_LOG(LogTemp, Warning, TEXT("🧊 Direct Control: Slow effect applied"));
-	}
-	
-	// ✅ 강제 업데이트
-	MovementComp->UpdateComponentVelocity();
-	
-	UE_LOG(LogTemp, Warning, TEXT("✅ Direct Control applied: MaxWalkSpeed = %f"), MovementComp->MaxWalkSpeed);
-	
-	// ✅ 복원 타이머 (안전한 방식)
-	FTimerHandle RestoreTimer;
-	Target->GetWorld()->GetTimerManager().SetTimer(RestoreTimer, [MovementComp]()
-	{
-		if (IsValid(MovementComp))
-		{
-			MovementComp->MaxWalkSpeed = 600.0f;
-			MovementComp->MaxAcceleration = 2048.0f;
-			MovementComp->JumpZVelocity = 600.0f;
-			UE_LOG(LogTemp, Warning, TEXT("🔄 Direct Control: Movement restored to normal"));
-		}
-	}, Duration, false);
+    ApplyCustomEffects(Target);
 }
 
 FActiveGameplayEffectHandle ACYTrapBase::ApplySingleEffect(UAbilitySystemComponent* TargetASC, TSubclassOf<UGameplayEffect> EffectClass)
 {
-	if (!TargetASC || !EffectClass) 
-	{
-		return FActiveGameplayEffectHandle();
-	}
+    if (!TargetASC || !EffectClass) 
+    {
+        return FActiveGameplayEffectHandle();
+    }
 
-	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
-	EffectContext.AddSourceObject(this);
+    FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
+    EffectContext.AddSourceObject(this);
     
-	FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
-	if (EffectSpec.IsValid())
-	{
-		return TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
-	}
+    FGameplayEffectSpecHandle EffectSpec = TargetASC->MakeOutgoingSpec(EffectClass, 1, EffectContext);
+    if (EffectSpec.IsValid())
+    {
+        FActiveGameplayEffectHandle Handle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
+        if (Handle.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("✅ Applied effect: %s"), *EffectClass->GetName());
+        }
+        return Handle;
+    }
 
-	return FActiveGameplayEffectHandle();
+    return FActiveGameplayEffectHandle();
 }
 
 void ACYTrapBase::MulticastUpdateTrapVisuals_Implementation()

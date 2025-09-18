@@ -1,4 +1,4 @@
-﻿// CYCombatAttributeSet.cpp - 트랩 효과 적용 보장
+﻿// CYCombatAttributeSet.cpp - testun 방식으로 단순화
 
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Net/UnrealNetwork.h"
@@ -37,8 +37,6 @@ void UCYCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribu
     else if (Attribute == GetMoveSpeedAttribute())
     {
         NewValue = FMath::Max(NewValue, 0.0f);
-        
-        // ✅ PreAttributeChange에서 로그 추가
         UE_LOG(LogTemp, Warning, TEXT("🏃 PreAttributeChange MoveSpeed: %f -> %f"), 
                GetMoveSpeed(), NewValue);
     }
@@ -46,23 +44,17 @@ void UCYCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribu
 
 void UCYCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
-	Super::PostGameplayEffectExecute(Data);
+    Super::PostGameplayEffectExecute(Data);
 
-	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
-	{
-		HandleHealthChange();
-	}
-	else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
-	{
-		// ✅ 서버에서 MoveSpeed 변경 처리
-		float OldValue = Data.EvaluatedData.Attribute.GetNumericValue(this);
-		float NewValue = GetMoveSpeed();
-        
-		UE_LOG(LogTemp, Warning, TEXT("🏃 [SERVER] PostGameplayEffectExecute MoveSpeed changed: %f -> %f"), 
-			   OldValue, NewValue);
-        
-		HandleMoveSpeedChange();
-	}
+    if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+    {
+        HandleHealthChange();
+    }
+    else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
+    {
+        // ✅ testun 방식: 단순하고 직접적인 처리
+        HandleMoveSpeedChange();
+    }
 }
 
 void UCYCombatAttributeSet::HandleHealthChange()
@@ -81,96 +73,90 @@ void UCYCombatAttributeSet::HandleHealthChange()
 
 void UCYCombatAttributeSet::HandleMoveSpeedChange()
 {
-	float NewMoveSpeed = GetMoveSpeed();
+    float NewMoveSpeed = GetMoveSpeed();
     
-	UE_LOG(LogTemp, Warning, TEXT("🏃 HandleMoveSpeedChange called with speed: %f"), NewMoveSpeed);
+    UE_LOG(LogTemp, Warning, TEXT("🏃 HandleMoveSpeedChange: %f"), NewMoveSpeed);
     
-	ACharacter* Character = GetOwningCharacter();
-	if (!Character)
-	{
-		UE_LOG(LogTemp, Error, TEXT("❌ HandleMoveSpeedChange: No Character found"));
-		LogOwnershipChain();
-		return;
-	}
-
-	// ✅ 핵심: MovementComponent에 직접 적용
-	ApplyMoveSpeedToMovementComponent(NewMoveSpeed);
-}
-
-// ✅ 강화된 Character 찾기 로직
-ACharacter* UCYCombatAttributeSet::GetOwningCharacter() const
-{
-    AActor* OwningActor = GetOwningActor();
-    
-    UE_LOG(LogTemp, Verbose, TEXT("🔍 GetOwningCharacter: OwningActor = %s"), 
-           OwningActor ? *OwningActor->GetName() : TEXT("NULL"));
-    
-    // 1. 직접 Character인지 확인
-    if (ACharacter* Character = Cast<ACharacter>(OwningActor))
+    // ✅ testun 방식: 단순한 Character 찾기
+    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
     {
-        UE_LOG(LogTemp, Verbose, TEXT("🔍 Found Character directly: %s"), *Character->GetName());
-        return Character;
-    }
-    
-    // 2. PlayerState를 통해 찾기
-    if (APlayerState* PlayerState = Cast<APlayerState>(OwningActor))
-    {
-        APawn* Pawn = PlayerState->GetPawn();
-        if (ACharacter* Character = Cast<ACharacter>(Pawn))
+        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
         {
-            UE_LOG(LogTemp, Verbose, TEXT("🔍 Found Character via PlayerState: %s"), *Character->GetName());
-            return Character;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ PlayerState has no valid Character Pawn"));
-        }
-    }
-    
-    // 3. AbilitySystemComponent을 통해 찾기 (추가 시도)
-    if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
-    {
-        if (AActor* AvatarActor = ASC->GetAvatarActor())
-        {
-            if (ACharacter* Character = Cast<ACharacter>(AvatarActor))
+            ApplyMovementRestrictions(MovementComp, NewMoveSpeed);
+            
+            // 서버에서 변경된 경우 네트워크 업데이트
+            if (Character->HasAuthority())
             {
-                UE_LOG(LogTemp, Verbose, TEXT("🔍 Found Character via ASC Avatar: %s"), *Character->GetName());
-                return Character;
+                Character->ForceNetUpdate();
             }
         }
     }
-    
-    return nullptr;
+    else
+    {
+        // PlayerState를 통한 접근 시도
+        if (APlayerState* PlayerState = Cast<APlayerState>(GetOwningActor()))
+        {
+            if (APawn* Pawn = PlayerState->GetPawn())
+            {
+                if (ACharacter* Character = Cast<ACharacter>(Pawn))
+                {
+                    if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+                    {
+                        ApplyMovementRestrictions(MovementComp, NewMoveSpeed);
+                        
+                        if (Character->HasAuthority())
+                        {
+                            Character->ForceNetUpdate();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
-// ✅ 디버깅용 소유권 체인 로그
-void UCYCombatAttributeSet::LogOwnershipChain() const
+void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed)
 {
-    UE_LOG(LogTemp, Warning, TEXT("🔍 === Ownership Chain Debug ==="));
+    if (!MovementComp) return;
     
-    AActor* OwningActor = GetOwningActor();
-    UE_LOG(LogTemp, Warning, TEXT("🔍 OwningActor: %s (Class: %s)"), 
-           OwningActor ? *OwningActor->GetName() : TEXT("NULL"),
-           OwningActor ? *OwningActor->GetClass()->GetName() : TEXT("NULL"));
+    MovementComp->MaxWalkSpeed = Speed;
     
-    if (APlayerState* PlayerState = Cast<APlayerState>(OwningActor))
+    if (Speed <= 0.0f)
     {
-        APawn* Pawn = PlayerState->GetPawn();
-        UE_LOG(LogTemp, Warning, TEXT("🔍 PlayerState->GetPawn(): %s"), 
-               Pawn ? *Pawn->GetName() : TEXT("NULL"));
+        // 완전 정지 - testun 방식
+        MovementComp->StopMovementImmediately();
+        MovementComp->MaxAcceleration = 0.0f;
+        MovementComp->BrakingDecelerationWalking = 10000.0f;
+        MovementComp->GroundFriction = 100.0f;
+        MovementComp->JumpZVelocity = 0.0f;
+        
+        UE_LOG(LogTemp, Warning, TEXT("❄️ IMMOBILIZED: %s"), *GetOwningActor()->GetName());
+    }
+    else if (Speed < 200.0f)
+    {
+        // 느림 상태 - testun 방식
+        MovementComp->MaxAcceleration = 500.0f;
+        MovementComp->BrakingDecelerationWalking = 1000.0f;
+        MovementComp->JumpZVelocity = 0.0f;
+        
+        UE_LOG(LogTemp, Warning, TEXT("🧊 SLOWED: %s to %f"), *GetOwningActor()->GetName(), Speed);
+    }
+    else
+    {
+        // 정상 복구 - testun 방식
+        MovementComp->MaxAcceleration = 2048.0f;
+        MovementComp->BrakingDecelerationWalking = 2000.0f;
+        MovementComp->GroundFriction = 8.0f;
+        MovementComp->JumpZVelocity = 600.0f;
+        
+        UE_LOG(LogTemp, Warning, TEXT("🏃 MOVEMENT RESTORED: %s"), *GetOwningActor()->GetName());
     }
     
-    if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
-    {
-        AActor* AvatarActor = ASC->GetAvatarActor();
-        UE_LOG(LogTemp, Warning, TEXT("🔍 ASC->GetAvatarActor(): %s"), 
-               AvatarActor ? *AvatarActor->GetName() : TEXT("NULL"));
-    }
-    
-    UE_LOG(LogTemp, Warning, TEXT("🔍 === End Debug ==="));
+    // ✅ testun 방식: 간단한 업데이트
+    MovementComp->UpdateComponentVelocity();
 }
 
-// ✅ 리플리케이션 핸들러들
+// OnRep 함수들 - testun 방식으로 단순화
 void UCYCombatAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, Health, OldHealth);
@@ -183,59 +169,16 @@ void UCYCombatAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMax
 
 void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMoveSpeed)
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
     
-	float NewMoveSpeed = GetMoveSpeed();
-	UE_LOG(LogTemp, Warning, TEXT("🏃 [CLIENT] OnRep_MoveSpeed: %f -> %f"), 
-		   OldMoveSpeed.GetCurrentValue(), NewMoveSpeed);
+    UE_LOG(LogTemp, Warning, TEXT("🏃 [CLIENT] OnRep_MoveSpeed: %f -> %f"), 
+           OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
     
-	// ✅ 클라이언트에서도 동일하게 처리
-	HandleMoveSpeedChange();
+    // ✅ 클라이언트에서도 동일한 제한 적용 (testun 방식)
+    HandleMoveSpeedChange();
 }
 
 void UCYCombatAttributeSet::OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower)
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, AttackPower, OldAttackPower);
-}
-
-void UCYCombatAttributeSet::ApplyMoveSpeedToMovementComponent(float NewMoveSpeed)
-{
-	ACharacter* Character = GetOwningCharacter();
-	if (!Character) return;
-
-	UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
-	if (!MovementComp) return;
-    
-	UE_LOG(LogTemp, Warning, TEXT("🏃 Applying speed %f to %s"), NewMoveSpeed, *Character->GetName());
-    
-	// ✅ 직접 적용
-	MovementComp->MaxWalkSpeed = NewMoveSpeed;
-    
-	if (NewMoveSpeed <= 0.0f)
-	{
-		// 완전 정지
-		MovementComp->StopMovementImmediately();
-		MovementComp->MaxAcceleration = 0.0f;
-		MovementComp->JumpZVelocity = 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("❄️ Complete freeze applied"));
-	}
-	else if (NewMoveSpeed < 100.0f)
-	{
-		// 슬로우
-		MovementComp->MaxAcceleration = 200.0f;
-		MovementComp->JumpZVelocity = 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("🧊 Slow effect applied"));
-	}
-	else
-	{
-		// 정상 속도
-		MovementComp->MaxAcceleration = 2048.0f;
-		MovementComp->JumpZVelocity = 600.0f;
-		UE_LOG(LogTemp, Warning, TEXT("🏃 Normal speed applied"));
-	}
-    
-	// ✅ 강제 업데이트
-	MovementComp->UpdateComponentVelocity();
-    
-	UE_LOG(LogTemp, Warning, TEXT("✅ MoveSpeed successfully applied: %f"), MovementComp->MaxWalkSpeed);
 }

@@ -249,10 +249,9 @@ void ACYPlayerCharacter::DisplayInventoryStatus()
                 InventoryComponent->WeaponSlots[i]->ItemCount
             );
             
-            // ✅ 타입 캐스팅으로 안전하게 비교
-            ACYWeaponBase* SlotWeapon = Cast<ACYWeaponBase>(InventoryComponent->WeaponSlots[i]);
-            if (WeaponComponent && WeaponComponent->CurrentWeapon && SlotWeapon && 
-                WeaponComponent->CurrentWeapon == SlotWeapon)
+            // ✅ testun 방식: 안전한 비교
+            if (WeaponComponent && WeaponComponent->CurrentWeapon && 
+                WeaponComponent->CurrentWeapon == InventoryComponent->WeaponSlots[i])
             {
                 WeaponInfo += TEXT(" ⭐ EQUIPPED");
                 GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, WeaponInfo);
