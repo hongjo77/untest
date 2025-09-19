@@ -10,29 +10,23 @@
 
 UGA_WeaponAttack::UGA_WeaponAttack()
 {
-    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
-    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
-    // 하드코딩된 태그 사용 (안정성)
-    FGameplayTag WeaponAttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Combat.WeaponAttack"));
-    FGameplayTag AttackingTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Attacking"));
-    FGameplayTag StunnedTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Stunned"));
-    FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Dead"));
+	FGameplayTagContainer AssetTags;
+	AssetTags.AddTag(CYGameplayTags::Ability_Combat_WeaponAttack);
+	SetAssetTags(AssetTags);
     
-    FGameplayTagContainer AssetTags;
-    AssetTags.AddTag(WeaponAttackTag);
-    SetAssetTags(AssetTags);
+	FGameplayTagContainer OwnedTags;
+	OwnedTags.AddTag(CYGameplayTags::State_Combat_Attacking);
+	ActivationOwnedTags = OwnedTags;
     
-    FGameplayTagContainer OwnedTags;
-    OwnedTags.AddTag(AttackingTag);
-    ActivationOwnedTags = OwnedTags;
+	FGameplayTagContainer BlockedTags;
+	BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
+	BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
+	ActivationBlockedTags = BlockedTags;
     
-    FGameplayTagContainer BlockedTags;
-    BlockedTags.AddTag(StunnedTag);
-    BlockedTags.AddTag(DeadTag);
-    ActivationBlockedTags = BlockedTags;
-    
-    UE_LOG(LogTemp, Warning, TEXT("GA_WeaponAttack created"));
+	UE_LOG(LogTemp, Warning, TEXT("GA_WeaponAttack created"));
 }
 
 void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -86,9 +80,7 @@ void UGA_WeaponAttack::PerformAttack()
 
 bool UGA_WeaponAttack::IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const
 {
-    // 🔥 직접 태그 체크 (CatchMe 방식)
-    FGameplayTag CooldownTag = FGameplayTag::RequestGameplayTag(FName("Cooldown.Combat.WeaponAttack"));
-    return ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CooldownTag);
+	return ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack);
 }
 
 void UGA_WeaponAttack::ProcessHitTarget(const FHitResult& HitResult)
@@ -126,22 +118,23 @@ void UGA_WeaponAttack::ApplyDamageToTarget(UAbilitySystemComponent* TargetASC, c
 }
 
 void UGA_WeaponAttack::ApplyWeaponCooldown(const FGameplayAbilitySpecHandle Handle, 
-    const FGameplayAbilityActorInfo* ActorInfo, 
-    const FGameplayAbilityActivationInfo ActivationInfo)
+	const FGameplayAbilityActorInfo* ActorInfo, 
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    // 🔥 CatchMe 방식: 동적으로 태그 추가
-    FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
-    if (CooldownSpec.IsValid())
-    {
-        // 🔥 핵심: 런타임에 쿨다운 태그 추가
-        FGameplayTag CooldownTag = FGameplayTag::RequestGameplayTag(FName("Cooldown.Combat.WeaponAttack"));
-        if (CooldownTag.IsValid())
-        {
-            CooldownSpec.Data->DynamicGrantedTags.AddTag(CooldownTag);
-            UE_LOG(LogTemp, Warning, TEXT("Added cooldown tag dynamically: %s"), *CooldownTag.ToString());
-        }
+	// 🔥 CatchMe 방식: 동적으로 태그 추가
+	FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
+	if (CooldownSpec.IsValid())
+	{
+		// 🔥 핵심: 런타임에 쿨다운 태그 추가
+		FGameplayTag CooldownTag = CYGameplayTags::Cooldown_Combat_WeaponAttack;
+		if (CooldownTag.IsValid())
+		{
+			CooldownSpec.Data->DynamicGrantedTags.AddTag(CooldownTag);
+			UE_LOG(LogTemp, Warning, TEXT("Added cooldown tag dynamically: %s"), 
+				   *CooldownTag.GetTagName().ToString());
+		}
         
-        ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
-        UE_LOG(LogTemp, Warning, TEXT("Weapon cooldown applied"));
-    }
+		ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
+		UE_LOG(LogTemp, Warning, TEXT("Weapon cooldown applied"));
+	}
 }

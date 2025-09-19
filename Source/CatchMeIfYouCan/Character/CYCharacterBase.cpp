@@ -52,15 +52,6 @@ void ACYCharacterBase::InitializeAbilitySets()
 	RemoveAbilitySets();
 
 	UCYAbilitySystemComponent* CYASC = CYAbilitySystemComponent.Get();
-
-	// CombatAttributeSet 보장
-	const UCYCombatAttributeSet* ExistingSet = CYASC->GetSet<UCYCombatAttributeSet>();
-	if (!ExistingSet)
-	{
-		UE_LOG(LogCY, Warning, TEXT("Adding UCYCombatAttributeSet to %s"), *GetName());
-		UCYCombatAttributeSet* NewCombatSet = NewObject<UCYCombatAttributeSet>(this);
-		CYASC->AddAttributeSetSubobject(NewCombatSet);
-	}
 	
 	// 기본 AbilitySet 부여
 	for (UCYAbilitySet* AbilitySet : DefaultAbilitySets)

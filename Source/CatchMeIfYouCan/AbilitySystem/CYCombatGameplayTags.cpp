@@ -7,6 +7,7 @@ namespace CYGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Ability_Combat_PlaceTrap, "Ability.Combat.PlaceTrap");
 
 	// State Tags
+	UE_DEFINE_GAMEPLAY_TAG(State_Combat_Attacking, "State.Combat.Attacking");
 	UE_DEFINE_GAMEPLAY_TAG(State_Combat_Stunned, "State.Combat.Stunned");
 	UE_DEFINE_GAMEPLAY_TAG(State_Combat_Dead, "State.Combat.Dead");
 

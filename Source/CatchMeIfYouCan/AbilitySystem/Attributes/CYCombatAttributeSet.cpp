@@ -134,32 +134,61 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
 // OnRep 함수들
 void UCYCombatAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, Health, OldHealth);
+	if (GetOwningAbilitySystemComponent())
+	{
+		GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, Health, OldHealth);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OnRep_Health: No valid AbilitySystemComponent"));
+	}
 }
 
 void UCYCombatAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MaxHealth, OldMaxHealth);
+	// 👈 안전성 체크 추가
+	if (GetOwningAbilitySystemComponent())
+	{
+		GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MaxHealth, OldMaxHealth);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OnRep_MaxHealth: No valid AbilitySystemComponent"));
+	}
 }
 
 void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMoveSpeed)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
-    
-    UE_LOG(LogTemp, Warning, TEXT("OnRep_MoveSpeed: %f -> %f"), 
-           OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
-    
-    // 🔥 클라이언트에서도 CatchMe 방식으로 처리
-    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
-    {
-        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
-        {
-            ApplyMovementRestrictions(MovementComp, GetMoveSpeed());
-        }
-    }
+	if (GetOwningAbilitySystemComponent())
+	{
+		GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MoveSpeed, OldMoveSpeed);
+		
+		UE_LOG(LogTemp, Warning, TEXT("OnRep_MoveSpeed: %f -> %f"), 
+			   OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
+		
+		// 🔥 클라이언트에서도 CatchMe 방식으로 처리
+		if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
+		{
+			if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+			{
+				ApplyMovementRestrictions(MovementComp, GetMoveSpeed());
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OnRep_MoveSpeed: No valid AbilitySystemComponent"));
+	}
 }
 
 void UCYCombatAttributeSet::OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, AttackPower, OldAttackPower);
+	if (GetOwningAbilitySystemComponent())
+	{
+		GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, AttackPower, OldAttackPower);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OnRep_AttackPower: No valid AbilitySystemComponent"));
+	}
 }
