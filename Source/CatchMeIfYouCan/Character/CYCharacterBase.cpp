@@ -124,6 +124,7 @@ void ACYCharacterBase::UseInventorySlot(int32 SlotIndex)
 {
 	if (InventoryComponent)
 	{
-		InventoryComponent->UseItem(SlotIndex);
+		// 🔥 UseItem에서 HoldItem으로 변경
+		InventoryComponent->HoldItem(SlotIndex);
 	}
 }

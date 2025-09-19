@@ -12,6 +12,8 @@
 #include "Player/CYPlayerState.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Items/CYItemBase.h"
+#include "Items/CYWeaponBase.h"
 
 ACYPlayerCharacter::ACYPlayerCharacter(const FObjectInitializer& ObjectInitializer) 
 	:	Super(ObjectInitializer)
@@ -186,13 +188,42 @@ void ACYPlayerCharacter::Input_Interact(const FInputActionValue& InputActionValu
 
 void ACYPlayerCharacter::Input_Attack(const FInputActionValue& InputActionValue)
 {
-	// WeaponComponent에서 공격 처리 (CatchMe 방식)
-	if (WeaponComponent)
+	// 🔥 한 번의 좌클릭으로 하나의 동작만 실행
+	
+	// 1. 현재 들고 있는 아이템이 있으면 아이템 사용 (우선순위 높음)
+	if (InventoryComponent && InventoryComponent->CurrentHeldItem)
 	{
-		WeaponComponent->PerformAttack();
+		bool bUsedItem = InventoryComponent->UseHeldItem();
+		
+		if (bUsedItem)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("🎯 Used held item: %s"), 
+				   *InventoryComponent->CurrentHeldItem->ItemName.ToString());
+		}
+		return; // 🔥 아이템 사용했으면 여기서 종료
 	}
 	
+	// 2. 무기가 장착되어 있으면 무기 공격
+	if (WeaponComponent && WeaponComponent->CurrentWeapon)
+	{
+		bool bUsedWeapon = WeaponComponent->PerformAttack();
+		
+		if (bUsedWeapon)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("⚔️ Attacked with weapon: %s"), 
+				   *WeaponComponent->CurrentWeapon->ItemName.ToString());
+		}
+		return; // 🔥 무기 공격했으면 여기서 종료
+	}
+	
+	// 3. 둘 다 없으면 인벤토리 디버그 표시
 	ShowInventoryDebug();
+	
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, 
+			TEXT("No weapon equipped or item held - Press number keys to select"));
+	}
 }
 
 void ACYPlayerCharacter::ShowInventoryDebug()
@@ -206,45 +237,45 @@ void ACYPlayerCharacter::ShowInventoryDebug()
 // 인벤토리 슬롯 입력 (1~9번 키)
 void ACYPlayerCharacter::Input_UseSlot1(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(1); // 무기 슬롯 1
+	if (InventoryComponent) InventoryComponent->HoldItem(1); // 무기 슬롯 1
 }
 
 void ACYPlayerCharacter::Input_UseSlot2(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(2); // 무기 슬롯 2
+	if (InventoryComponent) InventoryComponent->HoldItem(2); // 무기 슬롯 2
 }
 
 void ACYPlayerCharacter::Input_UseSlot3(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(3); // 무기 슬롯 3
+	if (InventoryComponent) InventoryComponent->HoldItem(3); // 무기 슬롯 3
 }
 
 void ACYPlayerCharacter::Input_UseSlot4(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(4); // 아이템 슬롯 1
+	if (InventoryComponent) InventoryComponent->HoldItem(4); // 아이템 슬롯 1
 }
 
 void ACYPlayerCharacter::Input_UseSlot5(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(5); // 아이템 슬롯 2
+	if (InventoryComponent) InventoryComponent->HoldItem(5); // 아이템 슬롯 2
 }
 
 void ACYPlayerCharacter::Input_UseSlot6(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(6); // 아이템 슬롯 3
+	if (InventoryComponent) InventoryComponent->HoldItem(6); // 아이템 슬롯 3
 }
 
 void ACYPlayerCharacter::Input_UseSlot7(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(7); // 아이템 슬롯 4
+	if (InventoryComponent) InventoryComponent->HoldItem(7); // 아이템 슬롯 4
 }
 
 void ACYPlayerCharacter::Input_UseSlot8(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(8); // 아이템 슬롯 5
+	if (InventoryComponent) InventoryComponent->HoldItem(8); // 아이템 슬롯 5
 }
 
 void ACYPlayerCharacter::Input_UseSlot9(const FInputActionValue& InputActionValue)
 {
-    if (InventoryComponent) InventoryComponent->UseItem(9); // 아이템 슬롯 6
+	if (InventoryComponent) InventoryComponent->HoldItem(9); // 아이템 슬롯 6
 }
