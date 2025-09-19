@@ -1,4 +1,4 @@
-﻿// CYCombatAttributeSet.cpp - CatchMe 방식으로 단순화
+﻿// CYCombatAttributeSet.cpp - 속도 동기화 문제 해결
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
@@ -11,8 +11,8 @@ UCYCombatAttributeSet::UCYCombatAttributeSet()
 {
     InitHealth(100.0f);
     InitMaxHealth(100.0f);
-    // 🔥 핵심: CatchMe처럼 600으로 설정
-    InitMoveSpeed(600.0f);
+    // 🔥 기본 속도 400으로 설정
+    InitMoveSpeed(400.0f);
     InitAttackPower(50.0f);
 }
 
@@ -36,6 +36,7 @@ void UCYCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribu
     }
     else if (Attribute == GetMoveSpeedAttribute())
     {
+        // 🔥 최소값을 0으로 유지 (음수 방지)
         NewValue = FMath::Max(NewValue, 0.0f);
         UE_LOG(LogTemp, Warning, TEXT("PreAttributeChange MoveSpeed: %f -> %f"), 
                GetMoveSpeed(), NewValue);
@@ -52,7 +53,7 @@ void UCYCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
     }
     else if (Data.EvaluatedData.Attribute == GetMoveSpeedAttribute())
     {
-        // 🔥 핵심: CatchMe 방식으로 즉시 처리
+        // 🔥 서버와 클라이언트 모두에서 처리 (원래대로)
         HandleMoveSpeedChange();
     }
 }
@@ -77,26 +78,50 @@ void UCYCombatAttributeSet::HandleMoveSpeedChange()
     
     UE_LOG(LogTemp, Warning, TEXT("HandleMoveSpeedChange: %f"), NewMoveSpeed);
     
-    // 🔥 CatchMe 방식: 직접 Character 찾기
-    if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
+    // 🔥 Character 찾기 로직 (원래대로)
+    ACharacter* TargetCharacter = nullptr;
+    
+    // 직접 Character인 경우
+    TargetCharacter = Cast<ACharacter>(GetOwningActor());
+    
+    // PlayerState가 Owner인 경우
+    if (!TargetCharacter)
     {
-        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+        if (APlayerState* PS = Cast<APlayerState>(GetOwningActor()))
         {
-            ApplyMovementRestrictions(MovementComp, NewMoveSpeed);
-            
-            if (Character->HasAuthority())
-            {
-                Character->ForceNetUpdate();
-            }
+            TargetCharacter = Cast<ACharacter>(PS->GetPawn());
+        }
+    }
+    
+    // Instigator를 통해 찾기
+    if (!TargetCharacter)
+    {
+        if (APawn* Pawn = GetOwningActor() ? GetOwningActor()->GetInstigator() : nullptr)
+        {
+            TargetCharacter = Cast<ACharacter>(Pawn);
+        }
+    }
+    
+    // Character를 찾았으면 이동 속도 적용
+    if (TargetCharacter)
+    {
+        ApplyMovementRestrictions(TargetCharacter, NewMoveSpeed);
+        
+        if (TargetCharacter->HasAuthority())
+        {
+            TargetCharacter->ForceNetUpdate();
         }
     }
 }
 
-void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed)
+void UCYCombatAttributeSet::ApplyMovementRestrictions(ACharacter* Character, float Speed)
 {
+    if (!Character) return;
+    
+    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
     if (!MovementComp) return;
     
-    // 🔥 CatchMe 방식: 직접 설정
+    // 🔥 원래대로: 즉시 설정
     MovementComp->MaxWalkSpeed = Speed;
     
     if (Speed <= 0.0f)
@@ -108,7 +133,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
         MovementComp->GroundFriction = 100.0f;
         MovementComp->JumpZVelocity = 0.0f;
         
-        UE_LOG(LogTemp, Warning, TEXT("IMMOBILIZED: %s"), *GetOwningActor()->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("IMMOBILIZED: %s"), *Character->GetName());
     }
     else if (Speed < 200.0f)
     {
@@ -117,7 +142,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
         MovementComp->BrakingDecelerationWalking = 1000.0f;
         MovementComp->JumpZVelocity = 0.0f;
         
-        UE_LOG(LogTemp, Warning, TEXT("SLOWED: %s to %f"), *GetOwningActor()->GetName(), Speed);
+        UE_LOG(LogTemp, Warning, TEXT("SLOWED: %s to %f"), *Character->GetName(), Speed);
     }
     else
     {
@@ -127,7 +152,7 @@ void UCYCombatAttributeSet::ApplyMovementRestrictions(UCharacterMovementComponen
         MovementComp->GroundFriction = 8.0f;
         MovementComp->JumpZVelocity = 600.0f;
         
-        UE_LOG(LogTemp, Warning, TEXT("MOVEMENT RESTORED: %s"), *GetOwningActor()->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("MOVEMENT RESTORED: %s"), *Character->GetName());
     }
 }
 
@@ -146,7 +171,6 @@ void UCYCombatAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth
 
 void UCYCombatAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth)
 {
-	// 👈 안전성 체크 추가
 	if (GetOwningAbilitySystemComponent())
 	{
 		GAMEPLAYATTRIBUTE_REPNOTIFY(UCYCombatAttributeSet, MaxHealth, OldMaxHealth);
@@ -166,14 +190,8 @@ void UCYCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMov
 		UE_LOG(LogTemp, Warning, TEXT("OnRep_MoveSpeed: %f -> %f"), 
 			   OldMoveSpeed.GetCurrentValue(), GetMoveSpeed());
 		
-		// 🔥 클라이언트에서도 CatchMe 방식으로 처리
-		if (ACharacter* Character = Cast<ACharacter>(GetOwningActor()))
-		{
-			if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
-			{
-				ApplyMovementRestrictions(MovementComp, GetMoveSpeed());
-			}
-		}
+		// 🔥 클라이언트에서도 즉시 이동 속도 적용 (원래대로)
+		HandleMoveSpeedChange();
 	}
 	else
 	{

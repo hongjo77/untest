@@ -1,4 +1,4 @@
-// CYCombatAttributeSet.h - CatchMe 방식으로 단순화
+// CYCombatAttributeSet.h - 헤더 파일 수정
 #pragma once
 
 #include "CoreMinimal.h"
@@ -50,5 +50,6 @@ protected:
 private:
 	void HandleHealthChange();
 	void HandleMoveSpeedChange();
-	void ApplyMovementRestrictions(UCharacterMovementComponent* MovementComp, float Speed);
+	// 🔥 시그니처 변경: ACharacter를 직접 받도록 수정
+	void ApplyMovementRestrictions(ACharacter* Character, float Speed);
 };
