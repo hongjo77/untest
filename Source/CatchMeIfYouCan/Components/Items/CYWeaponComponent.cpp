@@ -1,7 +1,7 @@
 ﻿#include "Components/Items/CYWeaponComponent.h"
 #include "Items/CYWeaponBase.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
-#include "AbilitySystem/CYCombatGameplayTags.h"
+#include "AbilitySystem/CYCombatGameplayTags.h" // 🔥 태그 사용을 위해 추가
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -82,16 +82,23 @@ bool UCYWeaponComponent::PerformAttack()
         return false;
     }
 
+    // 🔥 쿨다운 체크 추가 (무기 컴포넌트 레벨에서)
+    if (ASC->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack blocked by cooldown (component level)"));
+        return false;
+    }
+
     // 무기 공격 어빌리티 실행
     bool bSuccess = ASC->TryActivateAbilityByTag(CYGameplayTags::Ability_Combat_WeaponAttack);
     
     if (bSuccess)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack activated"));
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack ability activated"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack failed (cooldown or no ability)"));
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack failed to activate"));
     }
     
     return bSuccess;

@@ -3,6 +3,8 @@
 #include "Character/CYPlayerCharacter.h"
 #include "Components/SphereComponent.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CYAbilitySystemComponent.h"
+#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
@@ -50,10 +52,30 @@ bool ACYTrapBase::UseItem(ACYPlayerCharacter* Character)
 {
     if (!Character || !HasAuthority()) return false;
     
-    // 트랩 사용 = 설치 모드로 전환
-    // 실제 설치는 GA_PlaceTrap 어빌리티에서 처리
-    UE_LOG(LogTemp, Warning, TEXT("🎯 Trap ready to place: %s"), *ItemName.ToString());
-    return true;
+    // 🔥 실제 GA_PlaceTrap 어빌리티 실행
+    UCYAbilitySystemComponent* ASC = Cast<UCYAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+    if (!ASC)
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ Character has no AbilitySystemComponent"));
+        return false;
+    }
+    
+    // 트랩 설치 어빌리티를 이 트랩 아이템을 소스로 실행
+    bool bActivated = ASC->TryActivateAbilityByTagWithSource(
+        CYGameplayTags::Ability_Combat_PlaceTrap, 
+        this  // 이 트랩 아이템을 소스로 전달
+    );
+    
+    if (bActivated)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 Trap placement ability activated: %s"), *ItemName.ToString());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("❌ Failed to activate trap placement ability"));
+    }
+    
+    return bActivated;
 }
 
 void ACYTrapBase::PlaceTrap(const FVector& Location, ACYPlayerCharacter* Placer)

@@ -9,7 +9,8 @@
 
 UGA_WeaponAttack::UGA_WeaponAttack()
 {
-    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
+    // 🔥 쿨다운을 위해 InstancedPerActor로 변경 (핵심!)
+    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
     // 태그 설정
@@ -21,12 +22,10 @@ UGA_WeaponAttack::UGA_WeaponAttack()
     FGameplayTagContainer BlockedTags;
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
+    BlockedTags.AddTag(CYGameplayTags::Cooldown_Combat_WeaponAttack); // 🔥 자기 쿨다운도 블록
     ActivationBlockedTags = BlockedTags;
     
-    // 쿨다운 태그 설정
-    FGameplayTagContainer CooldownTags;
-    CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_WeaponAttack);
-    CancelAbilitiesWithTag = CooldownTags;
+    UE_LOG(LogTemp, Warning, TEXT("🛠️ WeaponAttack GA created with direct cooldown"));
 }
 
 bool UGA_WeaponAttack::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -38,10 +37,10 @@ bool UGA_WeaponAttack::CanActivateAbility(const FGameplayAbilitySpecHandle Handl
         return false;
     }
 
-    // 쿨다운 체크
-    if (IsOnCooldown(ActorInfo))
+    // 🔥 직접 태그 체크 (UE 기본 쿨다운 시스템 우회)
+    if (ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack))
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack on cooldown"));
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack on cooldown (direct tag check)"));
         return false;
     }
 
@@ -57,6 +56,14 @@ void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
     {
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
         return;
+    }
+
+    // 🔥 직접 쿨다운 GE 적용 (UE 기본 시스템 우회)
+    FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
+    if (CooldownSpec.IsValid())
+    {
+        ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
+        UE_LOG(LogTemp, Warning, TEXT("⚔️ Cooldown applied directly"));
     }
 
     // 공격 수행
@@ -78,21 +85,6 @@ void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
         if (GEngine)
         {
             GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("❌ NO TARGET"));
-        }
-    }
-
-    // 쿨다운 적용
-    if (GetCooldownGameplayEffect())
-    {
-        ApplyGameplayEffectToOwner(Handle, ActorInfo, ActivationInfo, GetCooldownGameplayEffect(), 1);
-    }
-    else
-    {
-        // 기본 쿨다운 적용
-        FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
-        if (CooldownSpec.IsValid())
-        {
-            ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
         }
     }
 
@@ -156,10 +148,4 @@ void UGA_WeaponAttack::ApplyDamageToTarget(UAbilitySystemComponent* TargetASC, c
         UE_LOG(LogTemp, Warning, TEXT("💥 Applied weapon damage to: %s"), 
                *TargetASC->GetOwnerActor()->GetName());
     }
-}
-
-bool UGA_WeaponAttack::IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const
-{
-    const FGameplayTagContainer* CooldownTags = GetCooldownTags();
-    return CooldownTags && ActorInfo->AbilitySystemComponent->HasAnyMatchingGameplayTags(*CooldownTags);
 }

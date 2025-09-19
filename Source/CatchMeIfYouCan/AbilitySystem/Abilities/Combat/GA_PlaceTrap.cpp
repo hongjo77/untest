@@ -28,6 +28,11 @@ UGA_PlaceTrap::UGA_PlaceTrap()
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
     BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
     ActivationBlockedTags = BlockedTags;
+    
+    // 쿨다운 GE 클래스 설정
+    CooldownGameplayEffectClass = UGE_TrapPlaceCooldown::StaticClass();
+    
+    UE_LOG(LogTemp, Warning, TEXT("🛠️ PlaceTrap GA created"));
 }
 
 void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -41,23 +46,26 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
         return;
     }
 
-    // 쿨다운 체크
-    FGameplayTagContainer CooldownTags;
-    CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_TrapPlace);
-    if (GetAbilitySystemComponentFromActorInfo()->HasAnyMatchingGameplayTags(CooldownTags))
+    // 🔥 쿨다운 먼저 체크 및 적용
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
         UE_LOG(LogTemp, Warning, TEXT("⏰ Trap placement on cooldown"));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
         return;
     }
 
-    // 인벤토리에서 트랩 아이템 찾기
-    ACYItemBase* TrapItem = FindTrapItemInInventory();
+    // 🔥 소스 오브젝트에서 트랩 아이템 가져오기
+    ACYTrapBase* TrapItem = GetTrapItemFromSource();
     if (!TrapItem)
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ No trap item found in inventory"));
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-        return;
+        // 폴백: 인벤토리에서 찾기
+        TrapItem = Cast<ACYTrapBase>(FindTrapItemInInventory());
+        if (!TrapItem)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ No trap item found"));
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
     }
 
     // 트랩 설치 위치 계산
@@ -80,13 +88,6 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
             GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, 
                 FString::Printf(TEXT("🎯 %s Placed!"), *NewTrap->ItemName.ToString()));
         }
-        
-        // 쿨다운 적용
-        FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_TrapPlaceCooldown::StaticClass(), 1);
-        if (CooldownSpec.IsValid())
-        {
-            ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
-        }
     }
     else
     {
@@ -94,6 +95,24 @@ void UGA_PlaceTrap::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
     }
     
     EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+ACYTrapBase* UGA_PlaceTrap::GetTrapItemFromSource() const
+{
+    // 어빌리티 스펙의 소스 오브젝트에서 트랩 아이템 가져오기
+    const FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec();
+    if (AbilitySpec && AbilitySpec->SourceObject.IsValid())
+    {
+        ACYTrapBase* TrapItem = Cast<ACYTrapBase>(AbilitySpec->SourceObject.Get());
+        if (TrapItem)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎯 Using trap from source: %s"), *TrapItem->ItemName.ToString());
+            return TrapItem;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("🎯 No trap source found, searching inventory..."));
+    return nullptr;
 }
 
 ACYItemBase* UGA_PlaceTrap::FindTrapItemInInventory()
@@ -120,10 +139,32 @@ ACYTrapBase* UGA_PlaceTrap::CreateTrapFromItem(ACYItemBase* TrapItem, const FVec
 {
     if (!TrapItem || !GetWorld()) return nullptr;
     
-    // 트랩 타입에 따라 적절한 클래스 선택
-    TSubclassOf<ACYTrapBase> TrapClass = nullptr;
+    // 🔥 이미 트랩 액터인 경우 복제하여 새로 생성
+    ACYTrapBase* SourceTrap = Cast<ACYTrapBase>(TrapItem);
+    if (SourceTrap)
+    {
+        // 같은 클래스의 새 트랩 생성
+        TSubclassOf<ACYTrapBase> TrapClass = SourceTrap->GetClass();
+        
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = GetAvatarActorFromActorInfo();
+        SpawnParams.Instigator = Cast<APawn>(GetAvatarActorFromActorInfo());
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+        ACYTrapBase* NewTrap = GetWorld()->SpawnActor<ACYTrapBase>(TrapClass, Location, FRotator::ZeroRotator, SpawnParams);
+        
+        if (NewTrap)
+        {
+            // 플레이어가 설치한 트랩으로 변환
+            NewTrap->PlaceTrap(Location, Cast<ACYPlayerCharacter>(GetAvatarActorFromActorInfo()));
+            return NewTrap;
+        }
+    }
     
+    // 폴백: 이름 기반 트랩 생성
+    TSubclassOf<ACYTrapBase> TrapClass = nullptr;
     FString ItemName = TrapItem->ItemName.ToString().ToLower();
+    
     if (ItemName.Contains(TEXT("slow")))
     {
         TrapClass = ACYSlowTrap::StaticClass();
