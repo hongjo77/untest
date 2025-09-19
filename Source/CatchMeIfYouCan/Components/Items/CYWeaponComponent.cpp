@@ -1,7 +1,8 @@
-﻿#include "Components/Items/CYWeaponComponent.h"
+﻿// CYWeaponComponent.cpp - CatchMe 방식으로 실제 공격 로직 포함
+#include "Components/Items/CYWeaponComponent.h"
 #include "Items/CYWeaponBase.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
-#include "AbilitySystem/CYCombatGameplayTags.h" // 🔥 태그 사용을 위해 추가
+#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -9,6 +10,7 @@
 #include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 
 UCYWeaponComponent::UCYWeaponComponent()
 {
@@ -26,7 +28,6 @@ bool UCYWeaponComponent::EquipWeapon(ACYWeaponBase* Weapon)
 {
     if (!Weapon || !GetOwner()->HasAuthority()) return false;
 
-    // 기존 무기 해제
     if (CurrentWeapon)
     {
         UnequipWeapon();
@@ -47,7 +48,7 @@ bool UCYWeaponComponent::EquipWeapon(ACYWeaponBase* Weapon)
     
     OnWeaponChanged.Broadcast(nullptr, CurrentWeapon);
     
-    UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon equipped: %s"), *Weapon->ItemName.ToString());
+    UE_LOG(LogTemp, Warning, TEXT("Weapon equipped: %s"), *Weapon->ItemName.ToString());
     return true;
 }
 
@@ -61,47 +62,102 @@ bool UCYWeaponComponent::UnequipWeapon()
 
     OnWeaponChanged.Broadcast(OldWeapon, nullptr);
     
-    UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon unequipped: %s"), *OldWeapon->ItemName.ToString());
+    UE_LOG(LogTemp, Warning, TEXT("Weapon unequipped: %s"), *OldWeapon->ItemName.ToString());
     return true;
 }
 
+// 🔥 핵심: CatchMe 방식으로 실제 공격 로직 포함
 bool UCYWeaponComponent::PerformAttack()
 {
-    if (!GetOwner()->HasAuthority()) return false;
+    UE_LOG(LogTemp, Warning, TEXT("PerformAttack called - HasAuthority: %s"), 
+           GetOwner()->HasAuthority() ? TEXT("true") : TEXT("false"));
     
-    if (!CurrentWeapon)
+    // 서버에서만 실행
+    if (!GetOwner()->HasAuthority()) 
     {
-        UE_LOG(LogTemp, Warning, TEXT("❌ No weapon equipped"));
+        UE_LOG(LogTemp, Warning, TEXT("PerformAttack: Not authority, returning false"));
         return false;
     }
 
-    UCYAbilitySystemComponent* ASC = GetOwnerASC();
-    if (!ASC)
+    // 무기가 있으면 공격 실행
+    if (CurrentWeapon) 
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ No AbilitySystemComponent found"));
-        return false;
-    }
-
-    // 🔥 쿨다운 체크 추가 (무기 컴포넌트 레벨에서)
-    if (ASC->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack blocked by cooldown (component level)"));
-        return false;
-    }
-
-    // 무기 공격 어빌리티 실행
-    bool bSuccess = ASC->TryActivateAbilityByTag(CYGameplayTags::Ability_Combat_WeaponAttack);
-    
-    if (bSuccess)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack ability activated"));
+        UE_LOG(LogTemp, Warning, TEXT("PerformAttack: CurrentWeapon found: %s"), 
+               *CurrentWeapon->ItemName.ToString());
+        return ExecuteWeaponAttack();
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack failed to activate"));
+        UE_LOG(LogTemp, Warning, TEXT("PerformAttack: No CurrentWeapon equipped"));
+        // 🔥 무기가 없으면 인벤토리 표시 (CatchMe 방식)
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("No weapon equipped"));
+        }
     }
     
-    return bSuccess;
+    return false;
+}
+
+bool UCYWeaponComponent::ExecuteWeaponAttack()
+{
+    UE_LOG(LogTemp, Warning, TEXT("ExecuteWeaponAttack called"));
+    
+    if (!CurrentWeapon) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("ExecuteWeaponAttack: CurrentWeapon is null"));
+        return false;
+    }
+
+    UCYAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent();
+    if (!ASC) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("ExecuteWeaponAttack: AbilitySystemComponent is null"));
+        return false;
+    }
+
+    // 🔥 안전한 태그 가져오기 (CatchMe 방식)
+    FGameplayTag WeaponAttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Combat.WeaponAttack"));
+    
+    if (!WeaponAttackTag.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Weapon attack tag is invalid! Tag: %s"), *WeaponAttackTag.ToString());
+        return false;
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("Using tag: %s"), *WeaponAttackTag.ToString());
+    
+    // 🔥 CatchMe 방식: 중복 실행 방지
+    FGameplayTagContainer TagContainer;
+    TagContainer.AddTag(WeaponAttackTag);
+    
+    TArray<FGameplayAbilitySpec*> ActivatableAbilities;
+    ASC->GetActivatableGameplayAbilitySpecsByAllMatchingTags(TagContainer, ActivatableAbilities);
+    
+    UE_LOG(LogTemp, Warning, TEXT("Found %d activatable abilities"), ActivatableAbilities.Num());
+    
+    // 첫 번째 어빌리티만 실행
+    if (ActivatableAbilities.Num() > 0)
+    {
+        FGameplayAbilitySpec* FirstAbility = ActivatableAbilities[0];
+        if (FirstAbility && FirstAbility->Handle.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Executing FIRST ability only: %s"), 
+                   FirstAbility->Ability ? *FirstAbility->Ability->GetName() : TEXT("NULL"));
+            
+            bool bResult = ASC->TryActivateAbility(FirstAbility->Handle);
+            UE_LOG(LogTemp, Warning, TEXT("Weapon attack result: %s"), bResult ? TEXT("Success") : TEXT("Failed"));
+            
+            return bResult;
+        }
+    }
+    
+    // 백업: 일반적인 태그 활성화
+    UE_LOG(LogTemp, Warning, TEXT("No valid ability spec found, trying fallback"));
+    bool bFallbackResult = ASC->TryActivateAbilityByTag(WeaponAttackTag);
+    UE_LOG(LogTemp, Warning, TEXT("Fallback result: %s"), bFallbackResult ? TEXT("Success") : TEXT("Failed"));
+    
+    return bFallbackResult;
 }
 
 bool UCYWeaponComponent::PerformLineTrace(FHitResult& OutHit, float Range)
@@ -121,7 +177,7 @@ bool UCYWeaponComponent::PerformLineTrace(FHitResult& OutHit, float Range)
     
     if (bHit)
     {
-        UE_LOG(LogTemp, Log, TEXT("🎯 Line trace hit: %s at distance %.1f"), 
+        UE_LOG(LogTemp, Log, TEXT("Line trace hit: %s at distance %.1f"), 
                *OutHit.GetActor()->GetName(), 
                FVector::Dist(Start, OutHit.Location));
     }
@@ -129,7 +185,7 @@ bool UCYWeaponComponent::PerformLineTrace(FHitResult& OutHit, float Range)
     return bHit;
 }
 
-UCYAbilitySystemComponent* UCYWeaponComponent::GetOwnerASC() const
+UCYAbilitySystemComponent* UCYWeaponComponent::GetOwnerAbilitySystemComponent() const
 {
     if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(GetOwner()))
     {
@@ -160,7 +216,7 @@ void UCYWeaponComponent::AttachWeaponToOwner(ACYWeaponBase* Weapon)
             WeaponSocketName
         );
         
-        UE_LOG(LogTemp, Log, TEXT("🔗 Weapon attached to socket: %s"), *WeaponSocketName.ToString());
+        UE_LOG(LogTemp, Log, TEXT("Weapon attached to socket: %s"), *WeaponSocketName.ToString());
     }
 }
 
@@ -171,10 +227,10 @@ void UCYWeaponComponent::OnRep_CurrentWeapon()
     if (CurrentWeapon)
     {
         AttachWeaponToOwner(CurrentWeapon);
-        UE_LOG(LogTemp, Log, TEXT("🔄 Client weapon replicated: %s"), *CurrentWeapon->ItemName.ToString());
+        UE_LOG(LogTemp, Log, TEXT("Client weapon replicated: %s"), *CurrentWeapon->ItemName.ToString());
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("🔄 Client weapon unequipped"));
+        UE_LOG(LogTemp, Log, TEXT("Client weapon unequipped"));
     }
 }

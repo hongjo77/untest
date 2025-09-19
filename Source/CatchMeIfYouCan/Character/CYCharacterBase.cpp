@@ -1,6 +1,7 @@
 #include "CYCharacterBase.h"
 #include "CYLogChannels.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
+#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "Components/Items/CYInventoryComponent.h"
 #include "Components/Items/CYItemInteractionComponent.h"
@@ -117,9 +118,14 @@ void ACYCharacterBase::InteractPressed()
 
 void ACYCharacterBase::AttackPressed()
 {
+	// 🔥 CatchMe 방식: WeaponComponent에서 모든 공격 로직 처리
 	if (WeaponComponent)
 	{
 		WeaponComponent->PerformAttack();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No WeaponComponent found"));
 	}
 }
 

@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿// CYWeaponComponent.h - CatchMe 방식으로 실제 공격 로직 포함
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -37,6 +38,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool UnequipWeapon();
 
+	// 🔥 CatchMe 방식: 실제 공격 로직 포함
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool PerformAttack();
 
@@ -50,8 +52,11 @@ protected:
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
 
+	// 🔥 CatchMe 방식: 실제 공격 실행 함수
+	bool ExecuteWeaponAttack();
+
 	// 헬퍼 함수들
-	UCYAbilitySystemComponent* GetOwnerASC() const;
+	UCYAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
 	USkeletalMeshComponent* GetOwnerMesh() const;
 	void AttachWeaponToOwner(ACYWeaponBase* Weapon);
 };

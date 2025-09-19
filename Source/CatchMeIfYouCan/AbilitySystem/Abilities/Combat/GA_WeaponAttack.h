@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿// GA_WeaponAttack.h - CatchMe 방식으로 단순화
+#pragma once
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/Abilities/CYGameplayAbility.h"
@@ -20,13 +21,12 @@ protected:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
-	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags = nullptr,
-		const FGameplayTagContainer* TargetTags = nullptr, FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
-
 private:
-	bool PerformAttack();
+	void PerformAttack();
 	void ProcessHitTarget(const FHitResult& HitResult);
 	void ApplyDamageToTarget(UAbilitySystemComponent* TargetASC, const FHitResult& HitResult);
 	bool IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const;
+	void ApplyWeaponCooldown(const FGameplayAbilitySpecHandle Handle, 
+		const FGameplayAbilityActorInfo* ActorInfo, 
+		const FGameplayAbilityActivationInfo ActivationInfo);
 };

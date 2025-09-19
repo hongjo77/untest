@@ -1,4 +1,5 @@
-﻿#include "AbilitySystem/Abilities/Combat/GA_WeaponAttack.h"
+﻿// GA_WeaponAttack.cpp - CatchMe 방식으로 단순화
+#include "AbilitySystem/Abilities/Combat/GA_WeaponAttack.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
@@ -9,42 +10,29 @@
 
 UGA_WeaponAttack::UGA_WeaponAttack()
 {
-    // 🔥 쿨다운을 위해 InstancedPerActor로 변경 (핵심!)
-    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
-    // 태그 설정
+    // 하드코딩된 태그 사용 (안정성)
+    FGameplayTag WeaponAttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Combat.WeaponAttack"));
+    FGameplayTag AttackingTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Attacking"));
+    FGameplayTag StunnedTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Stunned"));
+    FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(FName("State.Combat.Dead"));
+    
     FGameplayTagContainer AssetTags;
-    AssetTags.AddTag(CYGameplayTags::Ability_Combat_WeaponAttack);
+    AssetTags.AddTag(WeaponAttackTag);
     SetAssetTags(AssetTags);
     
-    // 블로킹 태그 설정
+    FGameplayTagContainer OwnedTags;
+    OwnedTags.AddTag(AttackingTag);
+    ActivationOwnedTags = OwnedTags;
+    
     FGameplayTagContainer BlockedTags;
-    BlockedTags.AddTag(CYGameplayTags::State_Combat_Stunned);
-    BlockedTags.AddTag(CYGameplayTags::State_Combat_Dead);
-    BlockedTags.AddTag(CYGameplayTags::Cooldown_Combat_WeaponAttack); // 🔥 자기 쿨다운도 블록
+    BlockedTags.AddTag(StunnedTag);
+    BlockedTags.AddTag(DeadTag);
     ActivationBlockedTags = BlockedTags;
     
-    UE_LOG(LogTemp, Warning, TEXT("🛠️ WeaponAttack GA created with direct cooldown"));
-}
-
-bool UGA_WeaponAttack::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
-    const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
-{
-    if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
-    {
-        return false;
-    }
-
-    // 🔥 직접 태그 체크 (UE 기본 쿨다운 시스템 우회)
-    if (ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CYGameplayTags::Cooldown_Combat_WeaponAttack))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack on cooldown (direct tag check)"));
-        return false;
-    }
-
-    return true;
+    UE_LOG(LogTemp, Warning, TEXT("GA_WeaponAttack created"));
 }
 
 void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -58,62 +46,49 @@ void UGA_WeaponAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
         return;
     }
 
-    // 🔥 직접 쿨다운 GE 적용 (UE 기본 시스템 우회)
-    FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
-    if (CooldownSpec.IsValid())
+    // 🔥 핵심: 직접 쿨다운 체크 (CatchMe 방식)
+    if (IsOnCooldown(ActorInfo))
     {
-        ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Cooldown applied directly"));
+        UE_LOG(LogTemp, Warning, TEXT("Weapon attack on cooldown"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+        return;
     }
 
     // 공격 수행
-    bool bAttackSuccess = PerformAttack();
+    PerformAttack();
 
-    if (bAttackSuccess)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack HIT"));
-        
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("⚔️ ATTACK HIT!"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚔️ Weapon attack MISS"));
-        
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("❌ NO TARGET"));
-        }
-    }
+    // 🔥 쿨다운 직접 적용 (CatchMe 방식)
+    ApplyWeaponCooldown(Handle, ActorInfo, ActivationInfo);
 
+    UE_LOG(LogTemp, Warning, TEXT("Weapon attack completed"));
     EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
 
-bool UGA_WeaponAttack::PerformAttack()
+void UGA_WeaponAttack::PerformAttack()
 {
     AActor* OwnerActor = GetAvatarActorFromActorInfo();
-    if (!OwnerActor) return false;
+    if (!OwnerActor) return;
 
     UCYWeaponComponent* WeaponComp = OwnerActor->FindComponentByClass<UCYWeaponComponent>();
-    if (!WeaponComp || !WeaponComp->CurrentWeapon)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("❌ No weapon equipped"));
-        return false;
-    }
+    if (!WeaponComp) return;
 
-    // 라인 트레이스로 타겟 찾기
     FHitResult HitResult;
-    float AttackRange = WeaponComp->CurrentWeapon->AttackRange;
-    
-    if (WeaponComp->PerformLineTrace(HitResult, AttackRange))
+    if (WeaponComp->PerformLineTrace(HitResult))
     {
         ProcessHitTarget(HitResult);
-        return true;
+        UE_LOG(LogTemp, Warning, TEXT("Weapon attack HIT"));
     }
-    
-    return false;
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Weapon attack MISS"));
+    }
+}
+
+bool UGA_WeaponAttack::IsOnCooldown(const FGameplayAbilityActorInfo* ActorInfo) const
+{
+    // 🔥 직접 태그 체크 (CatchMe 방식)
+    FGameplayTag CooldownTag = FGameplayTag::RequestGameplayTag(FName("Cooldown.Combat.WeaponAttack"));
+    return ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(CooldownTag);
 }
 
 void UGA_WeaponAttack::ProcessHitTarget(const FHitResult& HitResult)
@@ -124,7 +99,7 @@ void UGA_WeaponAttack::ProcessHitTarget(const FHitResult& HitResult)
     UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
     if (!TargetASC) 
     {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 Hit target has no ASC: %s"), *Target->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("Hit target has no ASC: %s"), *Target->GetName());
         return;
     }
 
@@ -145,7 +120,28 @@ void UGA_WeaponAttack::ApplyDamageToTarget(UAbilitySystemComponent* TargetASC, c
             TargetASC
         );
         
-        UE_LOG(LogTemp, Warning, TEXT("💥 Applied weapon damage to: %s"), 
+        UE_LOG(LogTemp, Warning, TEXT("Applied weapon damage to: %s"), 
                *TargetASC->GetOwnerActor()->GetName());
+    }
+}
+
+void UGA_WeaponAttack::ApplyWeaponCooldown(const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo, 
+    const FGameplayAbilityActivationInfo ActivationInfo)
+{
+    // 🔥 CatchMe 방식: 동적으로 태그 추가
+    FGameplayEffectSpecHandle CooldownSpec = MakeOutgoingGameplayEffectSpec(UGE_WeaponAttackCooldown::StaticClass(), 1);
+    if (CooldownSpec.IsValid())
+    {
+        // 🔥 핵심: 런타임에 쿨다운 태그 추가
+        FGameplayTag CooldownTag = FGameplayTag::RequestGameplayTag(FName("Cooldown.Combat.WeaponAttack"));
+        if (CooldownTag.IsValid())
+        {
+            CooldownSpec.Data->DynamicGrantedTags.AddTag(CooldownTag);
+            UE_LOG(LogTemp, Warning, TEXT("Added cooldown tag dynamically: %s"), *CooldownTag.ToString());
+        }
+        
+        ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, CooldownSpec);
+        UE_LOG(LogTemp, Warning, TEXT("Weapon cooldown applied"));
     }
 }

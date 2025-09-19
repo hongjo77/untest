@@ -1,8 +1,9 @@
+// CYCombatGameplayEffects.cpp - CatchMe 방식으로 단순화
 #include "AbilitySystem/Effects/CYCombatGameplayEffects.h"
 #include "AbilitySystem/Attributes/CYCombatAttributeSet.h"
 #include "AbilitySystem/CYCombatGameplayTags.h"
 
-// 기본 스탯 초기화 이펙트
+// 🔥 기본 스탯 초기화 이펙트 - CatchMe 방식 (600)
 UGE_InitialCombatStats::UGE_InitialCombatStats()
 {
     DurationPolicy = EGameplayEffectDurationType::Infinite;
@@ -10,30 +11,32 @@ UGE_InitialCombatStats::UGE_InitialCombatStats()
     // 체력 초기화
     FGameplayModifierInfo HealthModifier;
     HealthModifier.Attribute = UCYCombatAttributeSet::GetHealthAttribute();
-    HealthModifier.ModifierOp = EGameplayModOp::Override;
-    HealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(100.0f)); // 🔥 올바른 방법
+    HealthModifier.ModifierOp = EGameplayModOp::Additive;
+    HealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(100.0f));
     Modifiers.Add(HealthModifier);
     
     // 최대 체력 초기화
     FGameplayModifierInfo MaxHealthModifier;
     MaxHealthModifier.Attribute = UCYCombatAttributeSet::GetMaxHealthAttribute();
-    MaxHealthModifier.ModifierOp = EGameplayModOp::Override;
-    MaxHealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(100.0f)); // 🔥 올바른 방법
+    MaxHealthModifier.ModifierOp = EGameplayModOp::Additive;
+    MaxHealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(100.0f));
     Modifiers.Add(MaxHealthModifier);
     
-    // 이동속도 초기화
+    // 🔥 핵심: CatchMe처럼 600으로 초기화
     FGameplayModifierInfo MoveSpeedModifier;
     MoveSpeedModifier.Attribute = UCYCombatAttributeSet::GetMoveSpeedAttribute();
-    MoveSpeedModifier.ModifierOp = EGameplayModOp::Override;
-    MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(600.0f)); // 🔥 올바른 방법
+    MoveSpeedModifier.ModifierOp = EGameplayModOp::Additive;
+    MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(600.0f));
     Modifiers.Add(MoveSpeedModifier);
     
     // 공격력 초기화
     FGameplayModifierInfo AttackPowerModifier;
     AttackPowerModifier.Attribute = UCYCombatAttributeSet::GetAttackPowerAttribute();
-    AttackPowerModifier.ModifierOp = EGameplayModOp::Override;
-    AttackPowerModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(50.0f)); // 🔥 올바른 방법
+    AttackPowerModifier.ModifierOp = EGameplayModOp::Additive;
+    AttackPowerModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(50.0f));
     Modifiers.Add(AttackPowerModifier);
+    
+    UE_LOG(LogTemp, Warning, TEXT("InitialCombatStats GE created (MoveSpeed=600)"));
 }
 
 // 무기 데미지 이펙트 (즉시 적용)
@@ -44,74 +47,56 @@ UGE_WeaponDamage::UGE_WeaponDamage()
     FGameplayModifierInfo HealthModifier;
     HealthModifier.Attribute = UCYCombatAttributeSet::GetHealthAttribute();
     HealthModifier.ModifierOp = EGameplayModOp::Additive;
-    HealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-50.0f)); // 🔥 올바른 방법, 50 데미지
+    HealthModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-50.0f));
     Modifiers.Add(HealthModifier);
 }
 
-// 무기 공격 쿨다운 이펙트 (2초) - 쿨다운 태그 추가
+// 🔥 CatchMe 방식: 단순한 쿨다운 (태그 없음)
 UGE_WeaponAttackCooldown::UGE_WeaponAttackCooldown()
 {
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(2.0f)); // 🔥 올바른 방법
+	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(1.0f)); // 1초
     
-    // 쿨다운 태그 설정 - 이것이 핵심!
-    FGameplayTagContainer CooldownTags;
-    CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_WeaponAttack);
-    InheritableOwnedTagsContainer.Added = CooldownTags;
-    
-    UE_LOG(LogTemp, Warning, TEXT("🛠️ WeaponAttackCooldown GE created with tag"));
+    // 🔥 CatchMe 방식: 태그를 런타임에 추가
+    UE_LOG(LogTemp, Warning, TEXT("WeaponAttackCooldown GE created"));
 }
 
-// 트랩 배치 쿨다운 이펙트 (3초) - 쿨다운 태그 추가
+// 트랩 배치 쿨다운 이펙트 (3초)
 UGE_TrapPlaceCooldown::UGE_TrapPlaceCooldown()
 {
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(3.0f)); // 🔥 올바른 방법
+	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(3.0f));
     
-    // 쿨다운 태그 설정
-    FGameplayTagContainer CooldownTags;
-    CooldownTags.AddTag(CYGameplayTags::Cooldown_Combat_TrapPlace);
-    InheritableOwnedTagsContainer.Added = CooldownTags;
+    UE_LOG(LogTemp, Warning, TEXT("TrapPlaceCooldown GE created"));
 }
 
-// 슬로우 트랩 이펙트 (이동속도 50% 감소, 5초 지속)
+// 🔥 CatchMe 방식: 슬로우 트랩 (50으로 Override)
 UGE_SlowTrap::UGE_SlowTrap()
 {
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(5.0f)); // 🔥 올바른 방법
+	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(5.0f));
     
-	// 이동속도를 50% 감소
 	FGameplayModifierInfo MoveSpeedModifier;
 	MoveSpeedModifier.Attribute = UCYCombatAttributeSet::GetMoveSpeedAttribute();
 	MoveSpeedModifier.ModifierOp = EGameplayModOp::Override;
-	MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(300.0f)); // 🔥 올바른 방법
+	MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(50.0f)); // 느림
 	Modifiers.Add(MoveSpeedModifier);
     
-    // 디버프 태그 설정
-    FGameplayTagContainer DebuffTags;
-    DebuffTags.AddTag(CYGameplayTags::Effect_Debuff_Slow);
-    InheritableOwnedTagsContainer.Added = DebuffTags;
-    
-    UE_LOG(LogTemp, Warning, TEXT("🛠️ SlowTrap GE created: 600 -> 300"));
+    // 🔥 CatchMe 방식: 동적 태그 추가는 적용 시점에서
+    UE_LOG(LogTemp, Warning, TEXT("SlowTrap GE created: 600->50"));
 }
 
-// 프리즈 트랩 이펙트 (완전 정지, 3초 지속)
+// 🔥 CatchMe 방식: 프리즈 트랩 (0으로 Override)
 UGE_ImmobilizeTrap::UGE_ImmobilizeTrap()
 {
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(3.0f)); // 🔥 올바른 방법
+	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(3.0f)); // 🔥 3초로 단축
     
-	// 이동속도를 0으로 설정
 	FGameplayModifierInfo MoveSpeedModifier;
 	MoveSpeedModifier.Attribute = UCYCombatAttributeSet::GetMoveSpeedAttribute();
 	MoveSpeedModifier.ModifierOp = EGameplayModOp::Override;
-	MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(0.0f)); // 🔥 올바른 방법
+	MoveSpeedModifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(0.0f)); // 완전 정지
 	Modifiers.Add(MoveSpeedModifier);
     
-    // 디버프 태그 설정
-    FGameplayTagContainer DebuffTags;
-    DebuffTags.AddTag(CYGameplayTags::Effect_Debuff_Freeze);
-    InheritableOwnedTagsContainer.Added = DebuffTags;
-    
-    UE_LOG(LogTemp, Warning, TEXT("🛠️ ImmobilizeTrap GE created: 600 -> 0"));
+    UE_LOG(LogTemp, Warning, TEXT("ImmobilizeTrap GE created: 600->0"));
 }

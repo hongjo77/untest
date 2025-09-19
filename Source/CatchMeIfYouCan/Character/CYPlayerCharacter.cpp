@@ -3,6 +3,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Camera/CameraComponent.h"
 #include "AbilitySystem/CYAbilitySystemComponent.h"
+#include "AbilitySystem/CYCombatGameplayTags.h"
 #include "Components/Items/CYInventoryComponent.h"
 #include "Components/Items/CYItemInteractionComponent.h"
 #include "Components/Items/CYWeaponComponent.h"
@@ -185,16 +186,13 @@ void ACYPlayerCharacter::Input_Interact(const FInputActionValue& InputActionValu
 
 void ACYPlayerCharacter::Input_Attack(const FInputActionValue& InputActionValue)
 {
-    // 좌클릭 = 무기 공격 또는 인벤토리 디버그 출력
-    if (WeaponComponent && WeaponComponent->CurrentWeapon)
-    {
-        WeaponComponent->PerformAttack();
-    }
-    else
-    {
-        // 무기가 없으면 인벤토리 상태 출력 (디버그용)
-        ShowInventoryDebug();
-    }
+	// WeaponComponent에서 공격 처리 (CatchMe 방식)
+	if (WeaponComponent)
+	{
+		WeaponComponent->PerformAttack();
+	}
+	
+	ShowInventoryDebug();
 }
 
 void ACYPlayerCharacter::ShowInventoryDebug()
